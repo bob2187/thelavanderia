@@ -4,3 +4,4 @@
 admin_user: heisenberg
 admin_password_hash: "$6$RQv3LbbP62A8tweT$9C0KEITIFQrAfQLNe3K0s2is4X.lSGPpadnRkgREbyEXMW9if3X/glYnUfu./x/7jggK6mdVOBevGWG72YYZm1"
 remove_user: bobstephen
+companion_version: "v4.2.2"
