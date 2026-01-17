@@ -1,0 +1,28 @@
+---
+# Tailscale role: Install and enable Tailscale VPN
+
+- name: Install curl (needed for install script)
+  apt:
+    name: curl
+    state: present
+
+- name: Download Tailscale install script
+  get_url:
+    url: https://tailscale.com/install.sh
+    dest: /tmp/tailscale-install.sh
+    mode: '0755'
+
+- name: Run Tailscale install script
+  command: /tmp/tailscale-install.sh
+  args:
+    creates: /usr/bin/tailscale
+
+- name: Enable and start tailscaled service
+  service:
+    name: tailscaled
+    enabled: yes
+    state: started
+
+- name: Reminder to authenticate
+  debug:
+    msg: "Tailscale installed. SSH in and run 'sudo tailscale up' to authenticate."
