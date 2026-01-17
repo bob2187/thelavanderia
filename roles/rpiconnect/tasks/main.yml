@@ -1,0 +1,19 @@
+---
+# RPI Connect role: Install and enable Raspberry Pi Connect
+
+- name: Install rpi-connect
+  apt:
+    name: rpi-connect
+    state: present
+
+- name: Enable lingering for user
+  command: loginctl enable-linger {{ ansible_user }}
+
+- name: Enable rpi-connect
+  command: rpi-connect on
+  become: no
+  ignore_errors: yes
+
+- name: Reminder to authenticate
+  debug:
+    msg: "RPI Connect installed. If not started, log into desktop and run 'rpi-connect on && rpi-connect signin'"
