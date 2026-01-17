@@ -34,11 +34,11 @@
     create: yes
     mode: '0440'
 
-- name: Disable pi user login
+- name: Disable old user login
   user:
-    name: pi
+    name: "{{ disable_user | default('pi') }}"
     shell: /usr/sbin/nologin
-  when: disable_pi_user | default(true)
+  when: disable_old_user | default(true)
 
 - name: Enable SSH service
   service:

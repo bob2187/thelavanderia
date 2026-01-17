@@ -1,0 +1,7 @@
+---
+- name: Production Control Pi Setup
+  hosts: production_control
+  become: yes
+
+  roles:
+    - base
