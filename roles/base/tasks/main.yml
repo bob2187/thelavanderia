@@ -1,0 +1,53 @@
+---
+# Base role: Common setup for all Pis
+
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Update /etc/hosts with hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1\t{{ inventory_hostname }}"
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+
+- name: Create admin user
+  user:
+    name: "{{ admin_user }}"
+    password: "{{ admin_password_hash }}"
+    groups: sudo,adm,dialout,cdrom,audio,video,plugdev,games,users,input,render,netdev,gpio,i2c,spi
+    shell: /bin/bash
+    create_home: yes
+
+- name: Allow admin user passwordless sudo
+  lineinfile:
+    path: "/etc/sudoers.d/{{ admin_user }}"
+    line: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL"
+    create: yes
+    mode: '0440'
+
+- name: Disable pi user login
+  user:
+    name: pi
+    shell: /usr/sbin/nologin
+  when: disable_pi_user | default(true)
+
+- name: Enable SSH service
+  service:
+    name: ssh
+    enabled: yes
+    state: started
+
+- name: Enable VNC service
+  service:
+    name: vncserver-x11-serviced
+    enabled: yes
+    state: started
