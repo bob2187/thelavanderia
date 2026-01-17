@@ -34,11 +34,12 @@
     create: yes
     mode: '0440'
 
-- name: Disable old user login
+- name: Remove old user
   user:
-    name: "{{ disable_user | default('pi') }}"
-    shell: /usr/sbin/nologin
-  when: disable_old_user | default(true)
+    name: "{{ remove_user | default('pi') }}"
+    state: absent
+    remove: yes
+  when: remove_old_user | default(true)
 
 - name: Enable SSH service
   service:
