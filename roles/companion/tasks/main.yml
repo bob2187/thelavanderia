@@ -1,11 +1,10 @@
 ---
-# Companion role: Build Bitfocus Companion from source (GUI version with tray icon)
+# Companion role: Install Bitfocus Companion (pre-built with tray icon)
+# Requires: Download the linux-arm64 tar.gz from bitfocus.io and place in files/
 
-- name: Install build dependencies
+- name: Install dependencies
   apt:
     name:
-      - git
-      - build-essential
       - libusb-1.0-0-dev
       - libudev-dev
       - libfontconfig1
@@ -15,72 +14,32 @@
       - libxss1
       - libxtst6
       - xdg-utils
-      - ca-certificates
-      - curl
-      - gnupg
+      - libgbm1
+      - libasound2
     state: present
 
-- name: Create keyrings directory
+- name: Create companion directory
   file:
-    path: /etc/apt/keyrings
+    path: /home/{{ admin_user }}/Desktop/companion
     state: directory
     mode: '0755'
 
-- name: Download NodeSource GPG key
-  shell: curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-  args:
-    creates: /etc/apt/keyrings/nodesource.gpg
-
-- name: Add NodeSource repository
+- name: Copy Companion archive
   copy:
-    dest: /etc/apt/sources.list.d/nodesource.list
-    content: |
-      deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main
+    src: "companion-linux-arm64.tar.gz"
+    dest: /tmp/companion.tar.gz
     mode: '0644'
 
-- name: Update apt cache after adding NodeSource
-  apt:
-    update_cache: yes
-
-- name: Install Node.js 22
-  apt:
-    name: nodejs
-    state: present
-
-- name: Enable corepack for Yarn
-  command: corepack enable
-
-- name: Prepare Yarn via corepack
-  command: corepack prepare yarn@stable --activate
-  environment:
-    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-
-- name: Clone Companion repository
-  git:
-    repo: https://github.com/bitfocus/companion.git
-    dest: /opt/companion
-    version: "{{ companion_version | default('main') }}"
-    force: yes
-
-- name: Install Companion dependencies with Yarn
-  command: yarn install
-  args:
-    chdir: /opt/companion
-  environment:
-    HOME: "/root"
-    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-
-- name: Build Companion TypeScript
-  command: yarn build:ts
-  args:
-    chdir: /opt/companion
-  environment:
-    HOME: "/root"
-    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+- name: Extract Companion
+  unarchive:
+    src: /tmp/companion.tar.gz
+    dest: /home/{{ admin_user }}/Desktop/companion
+    remote_src: yes
+    extra_opts: [--strip-components=1]
 
 - name: Set Companion ownership
   file:
-    path: /opt/companion
+    path: /home/{{ admin_user }}/Desktop/companion
     owner: "{{ admin_user }}"
     group: "{{ admin_user }}"
     recurse: yes
@@ -93,6 +52,14 @@
     group: "{{ admin_user }}"
     mode: '0755'
 
+- name: Find Companion executable
+  find:
+    paths: /home/{{ admin_user }}/Desktop/companion
+    patterns: "companion*"
+    file_type: file
+    recurse: no
+  register: companion_exe
+
 - name: Create Companion autostart entry
   copy:
     dest: "/home/{{ admin_user }}/.config/autostart/companion.desktop"
@@ -100,7 +67,7 @@
       [Desktop Entry]
       Type=Application
       Name=Bitfocus Companion
-      Exec=yarn --cwd /opt/companion dev
+      Exec=/home/{{ admin_user }}/Desktop/companion/companion-launcher
       Terminal=false
       StartupNotify=false
       X-GNOME-Autostart-enabled=true
@@ -110,4 +77,4 @@
 
 - name: Companion info
   debug:
-    msg: "Companion {{ companion_version | default('main') }} built. Log into desktop or reboot to start. Access at http://{{ inventory_hostname }}:8000"
+    msg: "Companion installed. Reboot or log into desktop to start. Access at http://{{ inventory_hostname }}:8000"
