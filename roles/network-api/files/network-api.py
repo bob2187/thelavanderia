@@ -155,28 +155,30 @@ def apply_config():
         # First, ensure we don't affect other interfaces
         # Only modify connections bound to eth0
 
+        # HIGH METRIC (1000) ensures WiFi stays as default route
+        # WiFi typically has metric ~600, so eth0 won't take over routing
+
         if state['mode'] == 'dhcp':
             # DHCP mode - only for eth0
             profile_name = 'Ethernet-DHCP'
-            # Delete old profile if exists, create fresh
             run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
-            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method auto ipv6.method disabled"
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method auto ipv4.route-metric 1000 ipv6.method disabled"
             run_cmd(cmd)
             cmd = f"nmcli con up '{profile_name}'"
 
         elif state['mode'] == 'server':
-            # DHCP Server mode - only for eth0
+            # DHCP Server mode - only for eth0 (no gateway needed for shared mode)
             profile_name = f"Ethernet-Server-{ip_str.replace('.', '-')}"
             run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
-            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method shared ipv4.addresses {ip_str}/{state['netmask']} ipv6.method disabled"
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method shared ipv4.addresses {ip_str}/{state['netmask']} ipv4.route-metric 1000 ipv6.method disabled"
             run_cmd(cmd)
             cmd = f"nmcli con up '{profile_name}'"
 
         elif state['mode'] == 'static':
-            # Static IP mode - only for eth0
+            # Static IP mode - only for eth0, high metric keeps WiFi as default route
             profile_name = f"Ethernet-Static-{ip_str.replace('.', '-')}"
             run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
-            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method manual ipv4.addresses {ip_str}/{state['netmask']} ipv4.gateway {gw_str} ipv4.dns '{state['dns']}' ipv6.method disabled"
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method manual ipv4.addresses {ip_str}/{state['netmask']} ipv4.gateway {gw_str} ipv4.dns '{state['dns']}' ipv4.route-metric 1000 ipv6.method disabled"
             run_cmd(cmd)
             cmd = f"nmcli con up '{profile_name}'"
 
