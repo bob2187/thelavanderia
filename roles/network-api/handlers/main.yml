@@ -1,0 +1,5 @@
+---
+- name: restart network-api
+  systemd:
+    name: network-api
+    state: restarted

@@ -1,0 +1,59 @@
+---
+# Network API role: REST API for network configuration via Companion buttons
+
+- name: Ensure NetworkManager and Flask are installed
+  apt:
+    name:
+      - network-manager
+      - python3-flask
+    state: present
+
+- name: Ensure NetworkManager is running
+  systemd:
+    name: NetworkManager
+    enabled: yes
+    state: started
+
+- name: Copy network API script
+  copy:
+    src: network-api.py
+    dest: /usr/local/bin/network-api.py
+    mode: '0755'
+
+- name: Create network-api systemd service
+  copy:
+    dest: /etc/systemd/system/network-api.service
+    content: |
+      [Unit]
+      Description=Network Configuration API
+      After=network.target NetworkManager.service
+
+      [Service]
+      ExecStart=/usr/bin/python3 /usr/local/bin/network-api.py
+      Restart=always
+      User=root
+      WorkingDirectory=/usr/local/bin
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+  notify: restart network-api
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start network-api
+  systemd:
+    name: network-api
+    enabled: yes
+    state: started
+
+- name: Network API info
+  debug:
+    msg: |
+      Network API installed. Test with:
+        curl http://localhost:5000/status
+        curl http://localhost:5000/display
+
+      Companion buttons use HTTP GET to http://localhost:5000/<endpoint>

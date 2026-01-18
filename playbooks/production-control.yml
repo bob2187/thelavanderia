@@ -8,3 +8,4 @@
     - tailscale
     - rpiconnect
     - companion
+    - network-api
