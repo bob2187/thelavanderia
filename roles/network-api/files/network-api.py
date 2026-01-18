@@ -121,15 +121,30 @@ def load_preset(name):
 
     return jsonify({'status': 'error', 'message': 'Unknown preset'}), 400
 
+def has_backup_connection():
+    """Check if WiFi or Tailscale is connected as backup"""
+    wlan_ip = run_cmd("ip -4 addr show wlan0 2>/dev/null | grep inet | awk '{print $2}'")
+    tailscale_ip = run_cmd("ip -4 addr show tailscale0 2>/dev/null | grep inet | awk '{print $2}'")
+    return bool(wlan_ip) or bool(tailscale_ip)
+
 @app.route('/apply')
+@app.route('/apply/force')
 def apply_config():
     """Apply the configured network settings - ONLY to eth0"""
+    force_mode = request.path.endswith('/force')
 
     # SAFETY CHECK: Only modify allowed interfaces
     if not is_interface_safe(state['interface']):
         return jsonify({
             'status': 'error',
             'message': f"Interface {state['interface']} is not allowed. Only {ALLOWED_INTERFACES} can be modified."
+        }), 403
+
+    # SAFETY CHECK: Require backup connection (skip if force mode)
+    if not force_mode and not has_backup_connection():
+        return jsonify({
+            'status': 'error',
+            'message': 'No backup connection! WiFi or Tailscale must be connected. Use /apply/force to override.'
         }), 403
 
     ip_str = '.'.join(map(str, state['ip']))
