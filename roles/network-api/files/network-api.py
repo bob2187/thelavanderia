@@ -5,6 +5,10 @@ import json
 
 app = Flask(__name__)
 
+# SAFETY: Only these interfaces can be modified
+ALLOWED_INTERFACES = ['eth0']
+PROTECTED_INTERFACES = ['wlan0', 'wlan1', 'tailscale0', 'lo']
+
 # Global state for building configuration
 state = {
     'mode': 'dhcp',
@@ -20,16 +24,28 @@ def run_cmd(cmd):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     return result.stdout.strip()
 
+def is_interface_safe(interface):
+    """Check if interface is safe to modify"""
+    return interface in ALLOWED_INTERFACES and interface not in PROTECTED_INTERFACES
+
 @app.route('/status')
 def get_status():
     """Get current network status"""
-    ip_info = run_cmd(f"ip -4 addr show {state['interface']} | grep inet | awk '{{print $2}}'")
-    active_con = run_cmd(f"nmcli -t -f NAME con show --active | grep -v lo | head -1")
+    eth0_ip = run_cmd("ip -4 addr show eth0 | grep inet | awk '{print $2}'")
+    wlan_ip = run_cmd("ip -4 addr show wlan0 2>/dev/null | grep inet | awk '{print $2}'")
+    tailscale_ip = run_cmd("ip -4 addr show tailscale0 2>/dev/null | grep inet | awk '{print $2}'")
+    active_con = run_cmd("nmcli -t -f NAME,DEVICE con show --active")
 
     return jsonify({
-        'current_ip': ip_info,
-        'active_connection': active_con,
-        'configured': state
+        'eth0_ip': eth0_ip,
+        'wlan0_ip': wlan_ip,
+        'tailscale_ip': tailscale_ip,
+        'active_connections': active_con,
+        'configured': state,
+        'safety': {
+            'allowed_interfaces': ALLOWED_INTERFACES,
+            'protected_interfaces': PROTECTED_INTERFACES
+        }
     })
 
 @app.route('/display')
@@ -37,7 +53,8 @@ def display():
     """Return simple text for display"""
     ip_str = '.'.join(map(str, state['ip']))
     gw_str = '.'.join(map(str, state['gateway']))
-    return f"Mode: {state['mode']}\nIP: {ip_str}/{state['netmask']}\nGW: {gw_str}", 200, {'Content-Type': 'text/plain'}
+    eth0_ip = run_cmd("ip -4 addr show eth0 | grep inet | awk '{print $2}'")
+    return f"Mode: {state['mode']}\nTarget: {ip_str}/{state['netmask']}\nGW: {gw_str}\neth0 now: {eth0_ip}", 200, {'Content-Type': 'text/plain'}
 
 @app.route('/mode/<mode>')
 def set_mode(mode):
@@ -106,40 +123,86 @@ def load_preset(name):
 
 @app.route('/apply')
 def apply_config():
-    """Apply the configured network settings"""
+    """Apply the configured network settings - ONLY to eth0"""
+
+    # SAFETY CHECK: Only modify allowed interfaces
+    if not is_interface_safe(state['interface']):
+        return jsonify({
+            'status': 'error',
+            'message': f"Interface {state['interface']} is not allowed. Only {ALLOWED_INTERFACES} can be modified."
+        }), 403
+
     ip_str = '.'.join(map(str, state['ip']))
     gw_str = '.'.join(map(str, state['gateway']))
+    iface = state['interface']  # Always eth0
 
     try:
+        # First, ensure we don't affect other interfaces
+        # Only modify connections bound to eth0
+
         if state['mode'] == 'dhcp':
-            # Venue DHCP mode
-            cmd = f"nmcli con up 'Venue-DHCP' 2>&1 || nmcli con add type ethernet ifname {state['interface']} con-name 'Venue-DHCP' ipv4.method auto ipv6.method disabled && nmcli con up 'Venue-DHCP'"
+            # DHCP mode - only for eth0
+            profile_name = 'Ethernet-DHCP'
+            # Delete old profile if exists, create fresh
+            run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method auto ipv6.method disabled"
+            run_cmd(cmd)
+            cmd = f"nmcli con up '{profile_name}'"
 
         elif state['mode'] == 'server':
-            # Local DHCP Server mode
-            profile_name = f"Local-{ip_str.replace('.', '-')}"
-            cmd = f"nmcli con show '{profile_name}' >/dev/null 2>&1 && nmcli con up '{profile_name}' || (nmcli con add type ethernet ifname {state['interface']} con-name '{profile_name}' ipv4.method shared ipv4.addresses {ip_str}/{state['netmask']} ipv6.method disabled && nmcli con up '{profile_name}')"
+            # DHCP Server mode - only for eth0
+            profile_name = f"Ethernet-Server-{ip_str.replace('.', '-')}"
+            run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method shared ipv4.addresses {ip_str}/{state['netmask']} ipv6.method disabled"
+            run_cmd(cmd)
+            cmd = f"nmcli con up '{profile_name}'"
 
         elif state['mode'] == 'static':
-            # Static IP mode
-            profile_name = f"Static-{ip_str.replace('.', '-')}"
-            cmd = f"nmcli con show '{profile_name}' >/dev/null 2>&1 && nmcli con up '{profile_name}' || (nmcli con add type ethernet ifname {state['interface']} con-name '{profile_name}' ipv4.method manual ipv4.addresses {ip_str}/{state['netmask']} ipv4.gateway {gw_str} ipv4.dns '{state['dns']}' ipv6.method disabled && nmcli con up '{profile_name}')"
+            # Static IP mode - only for eth0
+            profile_name = f"Ethernet-Static-{ip_str.replace('.', '-')}"
+            run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method manual ipv4.addresses {ip_str}/{state['netmask']} ipv4.gateway {gw_str} ipv4.dns '{state['dns']}' ipv6.method disabled"
+            run_cmd(cmd)
+            cmd = f"nmcli con up '{profile_name}'"
 
         result = run_cmd(cmd)
 
         # Get new IP
         import time
         time.sleep(2)
-        new_ip = run_cmd(f"ip -4 addr show {state['interface']} | grep inet | awk '{{print $2}}'")
+        new_ip = run_cmd(f"ip -4 addr show {iface} | grep inet | awk '{{print $2}}'")
+
+        # Verify WiFi and Tailscale are still up
+        wlan_status = run_cmd("nmcli -t -f STATE dev show wlan0 2>/dev/null | grep -i connected || echo 'not connected'")
+        tailscale_ip = run_cmd("ip -4 addr show tailscale0 2>/dev/null | grep inet | awk '{print $2}' || echo 'none'")
 
         return jsonify({
             'status': 'ok',
             'mode': state['mode'],
+            'interface': iface,
             'configured_ip': ip_str,
             'actual_ip': new_ip,
+            'wlan_status': wlan_status,
+            'tailscale_ip': tailscale_ip,
             'result': result
         })
 
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/recovery')
+def recovery():
+    """Emergency recovery - restore DHCP on eth0"""
+    try:
+        run_cmd("nmcli con delete 'Ethernet-DHCP' 2>/dev/null || true")
+        run_cmd("nmcli con delete 'Ethernet-Static-*' 2>/dev/null || true")
+        run_cmd("nmcli con delete 'Ethernet-Server-*' 2>/dev/null || true")
+        run_cmd("nmcli con add type ethernet ifname eth0 con-name 'Ethernet-DHCP' ipv4.method auto")
+        run_cmd("nmcli con up 'Ethernet-DHCP'")
+
+        state['mode'] = 'dhcp'
+
+        return jsonify({'status': 'ok', 'message': 'Restored DHCP on eth0'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
