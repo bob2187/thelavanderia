@@ -1,0 +1,25 @@
+{
+  "id": "network-api",
+  "name": "Network API",
+  "shortname": "NetAPI",
+  "description": "Control Raspberry Pi network settings (DHCP/Static/Server modes)",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": "git+https://github.com/bob2187/thelavanderia.git",
+  "bugs": "https://github.com/bob2187/thelavanderia/issues",
+  "maintainers": [
+    {
+      "name": "thelavanderia"
+    }
+  ],
+  "legacyIds": [],
+  "runtime": {
+    "type": "node22",
+    "api": "nodejs-ipc",
+    "apiVersion": "1.11.3",
+    "entrypoint": "../main.js"
+  },
+  "manufacturer": "Custom",
+  "products": ["Network API"],
+  "keywords": ["network", "raspberry-pi", "dhcp", "static-ip"]
+}

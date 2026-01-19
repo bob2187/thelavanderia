@@ -1,0 +1,31 @@
+{
+  "name": "companion-module-network-api",
+  "version": "1.0.0",
+  "description": "Control Raspberry Pi network settings via REST API",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "bitfocus",
+    "companion",
+    "module",
+    "network",
+    "raspberry-pi"
+  ],
+  "author": "thelavanderia",
+  "license": "MIT",
+  "dependencies": {
+    "@companion-module/base": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
