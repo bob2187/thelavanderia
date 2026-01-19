@@ -75,39 +75,6 @@
     group: "{{ admin_user }}"
     mode: '0644'
 
-# Install Network API Companion Module
-- name: Create Companion modules directory
-  file:
-    path: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/companion"
-    state: directory
-    owner: "{{ admin_user }}"
-    group: "{{ admin_user }}"
-    mode: '0755'
-
-- name: Copy Network API module main.js
-  copy:
-    src: "network-api-module/main.js"
-    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/main.js"
-    owner: "{{ admin_user }}"
-    group: "{{ admin_user }}"
-    mode: '0644'
-
-- name: Copy Network API module package.json
-  copy:
-    src: "network-api-module/package.json"
-    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/package.json"
-    owner: "{{ admin_user }}"
-    group: "{{ admin_user }}"
-    mode: '0644'
-
-- name: Copy Network API module manifest.json
-  copy:
-    src: "network-api-module/companion/manifest.json"
-    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/companion/manifest.json"
-    owner: "{{ admin_user }}"
-    group: "{{ admin_user }}"
-    mode: '0644'
-
 - name: Companion info
   debug:
-    msg: "Companion installed with Network API module. Reboot or log into desktop to start. Access at http://{{ inventory_hostname }}:8000"
+    msg: "Companion installed. Reboot or log into desktop to start. Access at http://{{ inventory_hostname }}:8000"

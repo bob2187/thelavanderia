@@ -49,10 +49,43 @@
     enabled: yes
     state: started
 
+# Install Network API Companion Module
+- name: Create Companion modules directory
+  file:
+    path: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/companion"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0755'
+
+- name: Copy Network API module main.js
+  copy:
+    src: "network-api-module/main.js"
+    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/main.js"
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0644'
+
+- name: Copy Network API module package.json
+  copy:
+    src: "network-api-module/package.json"
+    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/package.json"
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0644'
+
+- name: Copy Network API module manifest.json
+  copy:
+    src: "network-api-module/companion/manifest.json"
+    dest: "/home/{{ admin_user }}/.config/companion/modules/network-api-1.0.0/companion/manifest.json"
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0644'
+
 - name: Network API info
   debug:
     msg: |
-      Network API installed. Test with:
+      Network API installed with Companion module. Test with:
         curl http://localhost:5000/status
         curl http://localhost:5000/display
 
