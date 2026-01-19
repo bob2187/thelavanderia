@@ -1,0 +1,16 @@
+---
+- name: OpenWRT Router Setup
+  hosts: openwrt_routers
+  gather_facts: no
+
+  pre_tasks:
+    - name: Install Python for Ansible
+      raw: opkg update && opkg install python3 python3-urllib
+      changed_when: false
+      failed_when: false
+
+    - name: Gather facts after Python installed
+      setup:
+
+  roles:
+    - tailscale-openwrt

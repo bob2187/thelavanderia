@@ -1,0 +1,63 @@
+---
+# Tailscale update role for OpenWRT/GL.iNET routers
+# Downloads latest Tailscale from official static builds
+
+- name: Get current Tailscale version
+  command: tailscale version
+  register: current_version
+  changed_when: false
+  failed_when: false
+
+- name: Display current version
+  debug:
+    msg: "Current Tailscale version: {{ current_version.stdout_lines[0] | default('not installed') }}"
+
+- name: Get latest Tailscale version
+  uri:
+    url: https://pkgs.tailscale.com/stable/?mode=json
+    return_content: yes
+  register: tailscale_releases
+  delegate_to: localhost
+  become: no
+
+- name: Set latest version fact
+  set_fact:
+    latest_version: "{{ (tailscale_releases.content | from_json).TarballsVersion }}"
+
+- name: Display latest version
+  debug:
+    msg: "Latest Tailscale version: {{ latest_version }}"
+
+- name: Check if update needed
+  set_fact:
+    update_needed: "{{ current_version.stdout_lines[0] | default('0') != latest_version }}"
+
+- name: Download latest Tailscale
+  get_url:
+    url: "https://pkgs.tailscale.com/stable/tailscale_{{ latest_version }}_arm64.tgz"
+    dest: /tmp/tailscale_latest.tgz
+    mode: '0644'
+  when: update_needed
+
+- name: Stop Tailscale service
+  command: /etc/init.d/tailscale stop
+  when: update_needed
+  failed_when: false
+
+- name: Extract and install Tailscale
+  shell: |
+    cd /tmp
+    tar -xzf tailscale_latest.tgz
+    cp tailscale_{{ latest_version }}_arm64/tailscale /usr/sbin/tailscale
+    cp tailscale_{{ latest_version }}_arm64/tailscaled /usr/sbin/tailscaled
+    chmod 755 /usr/sbin/tailscale /usr/sbin/tailscaled
+    rm -rf tailscale_latest.tgz tailscale_{{ latest_version }}_arm64
+  when: update_needed
+
+- name: Start Tailscale service
+  command: /etc/init.d/tailscale start
+  when: update_needed
+
+- name: Update summary
+  debug:
+    msg: "{{ 'Tailscale updated from ' + current_version.stdout_lines[0] + ' to ' + latest_version if update_needed else 'Tailscale already at latest version ' + latest_version }}"
