@@ -11,6 +11,12 @@
     regexp: '^127\.0\.1\.1'
     line: "127.0.1.1\t{{ inventory_hostname }}"
 
+- name: Refresh NodeSource GPG key
+  shell: |
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg --yes
+  changed_when: false
+  ignore_errors: yes
+
 - name: Update apt cache
   apt:
     update_cache: yes
