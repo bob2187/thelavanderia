@@ -6,6 +6,8 @@
   roles:
     - base
     - tailscale
+    - role: tailscale-autoroute
+      when: tailscale_autoroute | default(false)
     - rpiconnect
     - companion
     - network-api

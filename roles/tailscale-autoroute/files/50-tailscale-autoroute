@@ -1,0 +1,11 @@
+#!/bin/bash
+# networkd-dispatcher hook for tailscale-autoroute
+# Triggered when network interfaces change state
+
+# Only run on routable state
+if [ "$IFACE" = "lo" ] || [[ "$IFACE" == tailscale* ]]; then
+    exit 0
+fi
+
+# Run the autoroute script
+/usr/local/bin/tailscale-autoroute.sh

@@ -1,0 +1,98 @@
+---
+# Tailscale Auto-Route role
+# Automatically detects and advertises local subnets, enables exit node
+
+- name: Install networkd-dispatcher for network event handling
+  apt:
+    name: networkd-dispatcher
+    state: present
+
+- name: Ensure Python3 is installed (for subnet calculation)
+  apt:
+    name: python3
+    state: present
+
+- name: Create state directory for tailscale-autoroute
+  file:
+    path: /var/lib/tailscale-autoroute
+    state: directory
+    mode: '0755'
+
+- name: Deploy tailscale-autoroute script
+  copy:
+    src: tailscale-autoroute.sh
+    dest: /usr/local/bin/tailscale-autoroute.sh
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy networkd-dispatcher hook for routable state
+  copy:
+    src: 50-tailscale-autoroute
+    dest: /etc/networkd-dispatcher/routable.d/50-tailscale-autoroute
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Ensure NetworkManager dispatcher directory exists
+  file:
+    path: /etc/NetworkManager/dispatcher.d
+    state: directory
+    mode: '0755'
+
+- name: Deploy NetworkManager dispatcher hook (for nmcli/Companion changes)
+  copy:
+    src: 50-tailscale-autoroute-nm
+    dest: /etc/NetworkManager/dispatcher.d/50-tailscale-autoroute
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Deploy systemd service for boot-time route update
+  copy:
+    src: tailscale-autoroute.service
+    dest: /etc/systemd/system/tailscale-autoroute.service
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start tailscale-autoroute service
+  systemd:
+    name: tailscale-autoroute
+    enabled: yes
+    state: started
+
+- name: Enable and start networkd-dispatcher
+  systemd:
+    name: networkd-dispatcher
+    enabled: yes
+    state: started
+
+- name: Enable IP forwarding for exit node
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Enable IPv6 forwarding for exit node
+  sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Run initial route detection
+  command: /usr/local/bin/tailscale-autoroute.sh
+  register: autoroute_result
+  changed_when: "'updated successfully' in autoroute_result.stdout"
+
+- name: Show detected routes
+  debug:
+    msg: "{{ autoroute_result.stdout_lines }}"

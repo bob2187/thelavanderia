@@ -1,0 +1,29 @@
+#!/bin/bash
+# NetworkManager dispatcher script for tailscale-autoroute
+# Triggered when NetworkManager changes connection state
+#
+# Arguments: $1 = interface, $2 = action
+# Actions: up, down, connectivity-change, dhcp4-change, etc.
+
+IFACE="$1"
+ACTION="$2"
+
+# Only act on relevant events
+case "$ACTION" in
+    up|down|dhcp4-change|connectivity-change)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+# Skip tailscale and loopback
+if [ "$IFACE" = "lo" ] || [[ "$IFACE" == tailscale* ]]; then
+    exit 0
+fi
+
+# Log the trigger
+logger -t "tailscale-autoroute" "NetworkManager event: $IFACE $ACTION"
+
+# Run the autoroute script
+/usr/local/bin/tailscale-autoroute.sh

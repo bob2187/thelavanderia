@@ -1,0 +1,12 @@
+[Unit]
+Description=Tailscale Auto-Route Updater
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tailscale-autoroute.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
