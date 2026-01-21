@@ -70,6 +70,7 @@ sysupgrade -r /path/to/backup.tar.gz
 |----------|--------|---------|
 | `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, companion, network-api |
 | `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
+| `pinn-image.yml` | Pi with USB SD reader | Prepare PINN SD cards with SSH, VNC, and Tailscale |
 
 ## Roles
 
@@ -79,14 +80,68 @@ sysupgrade -r /path/to/backup.tar.gz
 - `rpiconnect` - Raspberry Pi Connect
 - `companion` - Bitfocus Companion (GUI build)
 - `network-api` - Custom network API module
+- `pinn-image` - Prepare PINN SD cards for headless deployment
 
 ### OpenWRT Roles
 - `tailscale-openwrt` - Updates Tailscale from official ARM64 static builds
 
 ## Key Files
 - `inventory/hosts.yml` - All hosts and groups
-- `inventory/group_vars/all.yml` - Variables for Pis (admin_user, companion_version)
+- `inventory/group_vars/all.yml` - Variables for Pis (admin_user, companion_version, PINN config, Tailscale auth key)
 - `inventory/group_vars/openwrt_routers.yml` - OpenWRT-specific vars (shell type, python path)
+
+## PINN Image Preparation
+
+### Overview
+The `pinn-image` role prepares SD cards with PINN (multi-boot manager) pre-configured for headless operation with SSH, VNC, and Tailscale.
+
+### Usage
+Insert an SD card into a Pi's USB port (e.g., skinnypete), then run:
+```bash
+cd /Users/robertstephen/thelavanderia
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook -i inventory/hosts.yml playbooks/pinn-image.yml -e "confirm_device=yes" -e "tailscale_auth_key=tskey-auth-xxx"
+```
+
+### What It Does
+1. Formats the SD card as FAT32
+2. Downloads and extracts PINN
+3. Configures `cmdline.txt` with SSH, VNC, and passwords
+4. Installs Tailscale static binaries
+5. Writes the Tailscale auth key
+
+### Configuration Variables (in `group_vars/all.yml`)
+| Variable | Purpose |
+|----------|---------|
+| `pinn_ssh_password` | SSH password for root user (default: bluesky) |
+| `pinn_vnc_password` | VNC password (default: bluesky) |
+| `tailscale_auth_key` | Reusable Tailscale auth key with `tag:pinn` |
+
+### After Booting PINN
+1. SSH to the Pi: `ssh root@<ip>` (password: bluesky)
+2. Start Tailscale manually: `/mnt/mmcblk0p1/tailscale/init.sh`
+3. Device appears in Tailscale admin as `pinn-XXXXXXXX` with `tag:pinn`
+
+### Tailscale ACL Setup
+The `tag:pinn` tag must be defined in your Tailscale ACL policy:
+```json
+{
+  "tagOwners": {
+    "tag:pinn": ["autogroup:admin"]
+  }
+}
+```
+Tagged devices have key expiry disabled - they stay connected indefinitely after registration.
+
+### Target Device
+Default target is `/dev/sda`. Override with:
+```bash
+-e "pinn_target_device=/dev/sdb"
+```
+
+### PINN Headless Operation
+- **SSH**: `root@<ip>` with configured password
+- **VNC**: Port 5900 with configured password (view PINN GUI remotely)
+- **Tailscale**: After running init script, accessible via Tailscale IP
 
 ## Troubleshooting
 

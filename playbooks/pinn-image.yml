@@ -1,0 +1,37 @@
+---
+# PINN Image Preparation Playbook
+# Run on a Pi with USB SD card reader to prepare PINN cards
+#
+# Usage:
+#   ansible-playbook playbooks/pinn-image.yml -e "target_host=skinnypete"
+#
+# Required variables (set in inventory/group_vars/all.yml):
+#   - tailscale_auth_key: Reusable Tailscale auth key
+#   - pinn_ssh_password: SSH password for PINN (default: raspberry)
+#   - pinn_vnc_password: VNC password for PINN (default: raspberry)
+#
+# Optional variables:
+#   - pinn_target_device: Target device (default: /dev/sda)
+
+- name: Prepare PINN SD Card
+  hosts: "{{ target_host | default('skinnypete') }}"
+  become: false
+
+  vars_prompt:
+    - name: confirm_device
+      prompt: "This will ERASE {{ pinn_target_device | default('/dev/sda') }}. Type 'yes' to continue"
+      private: false
+
+  pre_tasks:
+    - name: Abort if not confirmed
+      ansible.builtin.fail:
+        msg: "Aborted by user"
+      when: confirm_device != 'yes'
+
+    - name: Check for required Tailscale auth key
+      ansible.builtin.fail:
+        msg: "tailscale_auth_key is required. Set it in group_vars/all.yml or pass via -e"
+      when: tailscale_auth_key is not defined or tailscale_auth_key | length == 0
+
+  roles:
+    - pinn-image
