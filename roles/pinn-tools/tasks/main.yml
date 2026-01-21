@@ -1,0 +1,52 @@
+---
+# PINN Tools Role
+# Installs utilities for managing PINN from an installed OS
+
+- name: Install reboot-to-pinn script
+  ansible.builtin.copy:
+    src: reboot-to-pinn.sh
+    dest: /usr/local/bin/reboot-to-pinn
+    mode: '0755'
+  become: true
+
+- name: Install pinn-info script
+  ansible.builtin.copy:
+    src: pinn-info.sh
+    dest: /usr/local/bin/pinn-info
+    mode: '0755'
+  become: true
+
+- name: Create desktop entry for PINN Info
+  ansible.builtin.template:
+    src: pinn-info.desktop.j2
+    dest: "/home/{{ admin_user }}/Desktop/PINN Info.desktop"
+    mode: '0755'
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+  become: true
+
+- name: Update PINN Tailscale init script to save IP
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/../tailscale/init.sh
+    block: |
+      # Save Tailscale IP for reference from installed OS
+      PINN_IP=$("$TAILSCALE_DIR/tailscale" --socket="$TAILSCALE_STATE/tailscaled.sock" ip -4 2>/dev/null)
+      if [ -n "$PINN_IP" ]; then
+          echo "$PINN_IP" > "$TAILSCALE_DIR/pinn-tailscale-ip"
+          echo "Saved PINN Tailscale IP: $PINN_IP"
+      fi
+    marker: "# {mark} SAVE TAILSCALE IP"
+    insertbefore: "echo.*Tailscale setup complete"
+  become: true
+  ignore_errors: true
+
+- name: Display setup info
+  ansible.builtin.debug:
+    msg: |
+      PINN Tools installed!
+
+      Commands available:
+      - reboot-to-pinn : Reboot into PINN recovery
+      - pinn-info      : Show PINN Tailscale IP and info
+
+      Desktop shortcut "PINN Info" added.

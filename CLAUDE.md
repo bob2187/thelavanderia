@@ -68,7 +68,7 @@ sysupgrade -r /path/to/backup.tar.gz
 
 | Playbook | Target | Purpose |
 |----------|--------|---------|
-| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, companion, network-api |
+| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, companion, network-api, pinn-tools |
 | `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
 | `pinn-image.yml` | Pi with USB SD reader | Prepare PINN SD cards with SSH, VNC, and Tailscale |
 
@@ -81,6 +81,7 @@ sysupgrade -r /path/to/backup.tar.gz
 - `companion` - Bitfocus Companion (GUI build)
 - `network-api` - Custom network API module
 - `pinn-image` - Prepare PINN SD cards for headless deployment
+- `pinn-tools` - Desktop tools to view PINN Tailscale IP and reboot to PINN
 
 ### OpenWRT Roles
 - `tailscale-openwrt` - Updates Tailscale from official ARM64 static builds
@@ -142,6 +143,40 @@ Default target is `/dev/sda`. Override with:
 - **SSH**: `root@<ip>` with configured password
 - **VNC**: Port 5900 with configured password (view PINN GUI remotely)
 - **Tailscale**: After running init script, accessible via Tailscale IP
+
+## PINN Tools (Installed OS)
+
+The `pinn-tools` role installs utilities on the running Raspberry Pi OS to manage PINN remotely.
+
+### Commands Installed
+| Command | Purpose |
+|---------|---------|
+| `reboot-to-pinn` | Creates trigger file and reboots into PINN recovery |
+| `pinn-info` | Shows PINN's Tailscale IP and offers to reboot |
+
+### Desktop Shortcut
+A "PINN Info" desktop shortcut is added that:
+1. Displays PINN's saved Tailscale IP (from PINN partition)
+2. Shows the PINN hostname (`pinn-XXXXXXXX`)
+3. Offers to reboot into PINN
+
+### How It Works
+1. When PINN runs Tailscale init, it saves its IP to `/tailscale/pinn-tailscale-ip` on the PINN partition
+2. The installed OS can read this file to display the PINN Tailscale IP
+3. `reboot-to-pinn` creates `/boot/firmware/PINN_TRIGGER` which tells PINN to show recovery menu
+
+### Remote Workflow
+From anywhere via Tailscale:
+```bash
+# Check PINN info
+ssh heisenberg@<pi-tailscale-ip> "pinn-info"
+
+# Reboot to PINN
+ssh heisenberg@<pi-tailscale-ip> "reboot-to-pinn"
+
+# Then connect to PINN via its Tailscale IP
+ssh root@<pinn-tailscale-ip>
+```
 
 ## Troubleshooting
 
