@@ -40,11 +40,12 @@
     create: yes
     mode: '0440'
 
-- name: Remove old user
+- name: Remove old users
   user:
-    name: "{{ remove_user | default('pi') }}"
+    name: "{{ item }}"
     state: absent
     remove: yes
+  loop: "{{ remove_users | default(['pi']) }}"
   when: remove_old_user | default(true)
 
 - name: Enable SSH service
