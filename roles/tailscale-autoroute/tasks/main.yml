@@ -88,6 +88,41 @@
     state: present
     reload: yes
 
+- name: Install ethtool for UDP GRO configuration
+  apt:
+    name: ethtool
+    state: present
+
+- name: Configure UDP GRO forwarding on eth0
+  shell: |
+    ethtool -K eth0 rx-udp-gro-forwarding on 2>/dev/null || true
+    ethtool -K eth0 rx-gro-list off 2>/dev/null || true
+  changed_when: false
+
+- name: Create systemd service for UDP GRO settings at boot
+  copy:
+    dest: /etc/systemd/system/tailscale-udp-gro.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Configure UDP GRO for Tailscale
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/sbin/ethtool -K eth0 rx-udp-gro-forwarding on
+      ExecStart=/usr/sbin/ethtool -K eth0 rx-gro-list off
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable tailscale-udp-gro service
+  systemd:
+    name: tailscale-udp-gro
+    enabled: yes
+    daemon_reload: yes
+
 - name: Run initial route detection
   command: /usr/local/bin/tailscale-autoroute.sh
   register: autoroute_result
