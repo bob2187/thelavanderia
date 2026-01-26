@@ -5816,7 +5816,8 @@ var NetworkApiModule = class extends import_base.InstanceBase {
           { type: "dropdown", id: "mode", label: "Mode", default: "dhcp", choices: [
             { id: "dhcp", label: "DHCP" },
             { id: "static", label: "Static" },
-            { id: "server", label: "Server" }
+            { id: "server", label: "Server" },
+            { id: "linklocal", label: "Link-Local" }
           ] }
         ],
         callback: async (action) => {
@@ -5863,25 +5864,6 @@ var NetworkApiModule = class extends import_base.InstanceBase {
           }
         }
       },
-      preset: {
-        name: "Load Preset",
-        options: [
-          { type: "dropdown", id: "preset", label: "Preset", default: "192.168.0", choices: [
-            { id: "192.168.0", label: "192.168.0.x" },
-            { id: "192.168.1", label: "192.168.1.x" },
-            { id: "10.0.0", label: "10.0.0.x" },
-            { id: "10.10.10", label: "10.10.10.x" },
-            { id: "172.16.0", label: "172.16.0.x" }
-          ] }
-        ],
-        callback: async (action) => {
-          try {
-            await this.apiGet(`/preset/${action.options.preset}`);
-            this.pollState();
-          } catch (e) {
-          }
-        }
-      },
       apply: {
         name: "Apply",
         options: [{ type: "checkbox", id: "force", label: "Force", default: false }],
@@ -5917,7 +5899,8 @@ var NetworkApiModule = class extends import_base.InstanceBase {
           { type: "dropdown", id: "mode", label: "Mode", default: "dhcp", choices: [
             { id: "dhcp", label: "DHCP" },
             { id: "static", label: "Static" },
-            { id: "server", label: "Server" }
+            { id: "server", label: "Server" },
+            { id: "linklocal", label: "Link-Local" }
           ] }
         ],
         callback: (fb) => this.state.mode_actual === fb.options.mode
@@ -5931,7 +5914,8 @@ var NetworkApiModule = class extends import_base.InstanceBase {
           { type: "dropdown", id: "mode", label: "Mode", default: "dhcp", choices: [
             { id: "dhcp", label: "DHCP" },
             { id: "static", label: "Static" },
-            { id: "server", label: "Server" }
+            { id: "server", label: "Server" },
+            { id: "linklocal", label: "Link-Local" }
           ] }
         ],
         callback: (fb) => this.state.mode_pending === fb.options.mode && this.state.mode_actual !== fb.options.mode
@@ -5969,8 +5953,8 @@ var NetworkApiModule = class extends import_base.InstanceBase {
       mode_dhcp: {
         type: "button",
         category: "Modes",
-        name: "DHCP",
-        style: { text: "DHCP", size: "18", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(0, 0, 0) },
+        name: "DHCP CLIENT",
+        style: { text: "DHCP\nCLIENT", size: "14", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(0, 0, 0) },
         steps: [{ down: [{ actionId: "set_mode", options: { mode: "dhcp" } }], up: [] }],
         feedbacks: [
           { feedbackId: "mode_active", options: { mode: "dhcp" }, style: { bgcolor: (0, import_base.combineRgb)(0, 200, 0) } },
@@ -5991,12 +5975,23 @@ var NetworkApiModule = class extends import_base.InstanceBase {
       mode_server: {
         type: "button",
         category: "Modes",
-        name: "SERVER",
-        style: { text: "SERVER", size: "18", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(0, 0, 0) },
+        name: "DHCP SERVER",
+        style: { text: "DHCP\nSERVER", size: "14", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(0, 0, 0) },
         steps: [{ down: [{ actionId: "set_mode", options: { mode: "server" } }], up: [] }],
         feedbacks: [
           { feedbackId: "mode_active", options: { mode: "server" }, style: { bgcolor: (0, import_base.combineRgb)(0, 200, 0) } },
           { feedbackId: "mode_pending", options: { mode: "server" }, style: { bgcolor: (0, import_base.combineRgb)(200, 200, 0) } }
+        ]
+      },
+      mode_linklocal: {
+        type: "button",
+        category: "Modes",
+        name: "LINK-LOCAL",
+        style: { text: "LINK\nLOCAL", size: "14", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(0, 0, 0) },
+        steps: [{ down: [{ actionId: "set_mode", options: { mode: "linklocal" } }], up: [] }],
+        feedbacks: [
+          { feedbackId: "mode_active", options: { mode: "linklocal" }, style: { bgcolor: (0, import_base.combineRgb)(0, 100, 200) } },
+          { feedbackId: "mode_pending", options: { mode: "linklocal" }, style: { bgcolor: (0, import_base.combineRgb)(200, 200, 0) } }
         ]
       },
       apply: {
@@ -6031,8 +6026,6 @@ var NetworkApiModule = class extends import_base.InstanceBase {
       ip_down_1: { type: "button", category: "IP Adjust", name: "Oct2-", style: { text: "-", size: "24", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(80, 0, 0) }, steps: [{ down: [{ actionId: "ip_down", options: { octet: "1" } }], up: [] }], feedbacks: [] },
       ip_down_2: { type: "button", category: "IP Adjust", name: "Oct3-", style: { text: "-", size: "24", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(80, 0, 0) }, steps: [{ down: [{ actionId: "ip_down", options: { octet: "2" } }], up: [] }], feedbacks: [] },
       ip_down_3: { type: "button", category: "IP Adjust", name: "Oct4-", style: { text: "-", size: "24", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(80, 0, 0) }, steps: [{ down: [{ actionId: "ip_down", options: { octet: "3" } }], up: [] }], feedbacks: [] },
-      preset_192_168_0: { type: "button", category: "Presets", name: "192.168.0", style: { text: "192.168.0", size: "14", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(50, 50, 50) }, steps: [{ down: [{ actionId: "preset", options: { preset: "192.168.0" } }], up: [] }], feedbacks: [] },
-      preset_10_10_10: { type: "button", category: "Presets", name: "10.10.10", style: { text: "10.10.10", size: "14", color: (0, import_base.combineRgb)(255, 255, 255), bgcolor: (0, import_base.combineRgb)(50, 50, 50) }, steps: [{ down: [{ actionId: "preset", options: { preset: "10.10.10" } }], up: [] }], feedbacks: [] }
     };
   }
 };

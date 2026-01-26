@@ -46,7 +46,13 @@ def is_pending():
 def get_actual_mode():
     """Detect actual network mode from NetworkManager"""
     active = run_cmd("nmcli -t -f NAME con show --active | grep -E '^Ethernet'")
-    if 'DHCP' in active:
+    if 'LinkLocal' in active:
+        return 'linklocal'
+    elif 'DHCP' in active:
+        # Check if currently using link-local IP (DHCP fallback)
+        eth0_ip = run_cmd("ip -4 addr show eth0 | grep inet | awk '{print $2}'").split('/')[0]
+        if eth0_ip.startswith('169.254.'):
+            return 'linklocal'  # DHCP fell back to link-local
         return 'dhcp'
     elif 'Server' in active:
         return 'server'
@@ -84,12 +90,16 @@ def display():
     ip_str = '.'.join(map(str, state['ip']))
     gw_str = '.'.join(map(str, state['gateway']))
     eth0_ip = run_cmd("ip -4 addr show eth0 | grep inet | awk '{print $2}'")
-    return f"Mode: {state['mode']}\nTarget: {ip_str}/{state['netmask']}\nGW: {gw_str}\neth0 now: {eth0_ip}", 200, {'Content-Type': 'text/plain'}
+    actual_mode = get_actual_mode()
+    mode_display = state['mode']
+    if state['mode'] == 'dhcp' and actual_mode == 'linklocal':
+        mode_display = 'dhcp (link-local fallback)'
+    return f"Mode: {mode_display}\nTarget: {ip_str}/{state['netmask']}\nGW: {gw_str}\neth0 now: {eth0_ip}", 200, {'Content-Type': 'text/plain'}
 
 @app.route('/mode/<mode>')
 def set_mode(mode):
-    """Set network mode: dhcp, static, or server"""
-    if mode in ['dhcp', 'static', 'server']:
+    """Set network mode: dhcp, static, server, or linklocal"""
+    if mode in ['dhcp', 'static', 'server', 'linklocal']:
         state['mode'] = mode
         return jsonify({'status': 'ok', 'mode': mode})
     return jsonify({'status': 'error', 'message': 'Invalid mode'}), 400
@@ -133,24 +143,6 @@ def modify_gateway(octet, action):
 
     return jsonify({'status': 'ok', 'gateway': '.'.join(map(str, state['gateway']))})
 
-@app.route('/preset/<name>')
-def load_preset(name):
-    """Load common IP presets"""
-    presets = {
-        '192.168.0': {'ip': [192, 168, 0, 100], 'gateway': [192, 168, 0, 1]},
-        '192.168.1': {'ip': [192, 168, 1, 100], 'gateway': [192, 168, 1, 1]},
-        '10.0.0': {'ip': [10, 0, 0, 100], 'gateway': [10, 0, 0, 1]},
-        '10.10.10': {'ip': [10, 10, 10, 100], 'gateway': [10, 10, 10, 1]},
-        '172.16.0': {'ip': [172, 16, 0, 100], 'gateway': [172, 16, 0, 1]},
-    }
-
-    if name in presets:
-        state['ip'] = presets[name]['ip']
-        state['gateway'] = presets[name]['gateway']
-        return jsonify({'status': 'ok', 'preset': name, 'ip': '.'.join(map(str, state['ip']))})
-
-    return jsonify({'status': 'error', 'message': 'Unknown preset'}), 400
-
 def has_backup_connection():
     """Check if WiFi or Tailscale is connected as backup"""
     wlan_ip = run_cmd("ip -4 addr show wlan0 2>/dev/null | grep inet | awk '{print $2}'")
@@ -189,10 +181,19 @@ def apply_config():
         # WiFi typically has metric ~600, so eth0 won't take over routing
 
         if state['mode'] == 'dhcp':
-            # DHCP mode - only for eth0
+            # DHCP mode with link-local fallback - only for eth0
+            # ipv4.link-local=enabled ensures fallback to 169.254.x.x if DHCP fails
             profile_name = 'Ethernet-DHCP'
             run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
-            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method auto ipv4.route-metric 1000 ipv6.method disabled"
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method auto ipv4.link-local enabled ipv4.route-metric 1000 ipv6.method disabled"
+            run_cmd(cmd)
+            cmd = f"nmcli con up '{profile_name}'"
+
+        elif state['mode'] == 'linklocal':
+            # Link-local only mode (169.254.x.x) - direct peer connection without DHCP
+            profile_name = 'Ethernet-LinkLocal'
+            run_cmd(f"nmcli con delete '{profile_name}' 2>/dev/null || true")
+            cmd = f"nmcli con add type ethernet ifname {iface} con-name '{profile_name}' ipv4.method link-local ipv4.route-metric 1000 ipv6.method disabled"
             run_cmd(cmd)
             cmd = f"nmcli con up '{profile_name}'"
 
@@ -249,7 +250,8 @@ def recovery():
         run_cmd("nmcli con delete 'Ethernet-DHCP' 2>/dev/null || true")
         run_cmd("nmcli con delete 'Ethernet-Static-*' 2>/dev/null || true")
         run_cmd("nmcli con delete 'Ethernet-Server-*' 2>/dev/null || true")
-        run_cmd("nmcli con add type ethernet ifname eth0 con-name 'Ethernet-DHCP' ipv4.method auto")
+        run_cmd("nmcli con delete 'Ethernet-LinkLocal' 2>/dev/null || true")
+        run_cmd("nmcli con add type ethernet ifname eth0 con-name 'Ethernet-DHCP' ipv4.method auto ipv4.link-local enabled")
         run_cmd("nmcli con up 'Ethernet-DHCP'")
 
         state['mode'] = 'dhcp'
@@ -295,7 +297,7 @@ def get_state_mode():
 
 @app.route('/state/mode/<mode>')
 def get_mode_button_state(mode):
-    """Get state for a specific mode button (dhcp, static, server)"""
+    """Get state for a specific mode button (dhcp, static, server, linklocal)"""
     actual_mode = get_actual_mode()
     is_selected = (state['mode'] == mode)
     is_active = (actual_mode == mode)
@@ -354,6 +356,23 @@ def get_pending_status():
     return jsonify({
         'has_changes': is_pending(),
         'color': 'yellow' if is_pending() else 'green'
+    })
+
+@app.route('/state/linklocal')
+def get_linklocal_status():
+    """Get link-local status - whether active and if it's fallback or explicit"""
+    eth0_ip = run_cmd("ip -4 addr show eth0 | grep inet | awk '{print $2}'").split('/')[0]
+    is_linklocal = eth0_ip.startswith('169.254.')
+    actual_mode = get_actual_mode()
+    active_profile = run_cmd("nmcli -t -f NAME con show --active | grep -E '^Ethernet'")
+
+    return jsonify({
+        'is_linklocal': is_linklocal,
+        'ip': eth0_ip,
+        'explicit_mode': 'LinkLocal' in active_profile,  # Explicitly set to linklocal
+        'dhcp_fallback': is_linklocal and 'DHCP' in active_profile,  # DHCP fell back to linklocal
+        'actual_mode': actual_mode,
+        'color': 'blue' if is_linklocal else 'default'
     })
 
 if __name__ == '__main__':

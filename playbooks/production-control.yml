@@ -4,10 +4,16 @@
   become: yes
 
   roles:
-    - base
-    - tailscale
+    - role: base
+      tags: base
+    - role: tailscale
+      tags: tailscale
     - role: tailscale-autoroute
+      tags: tailscale-autoroute
       when: tailscale_autoroute | default(false)
-    - rpiconnect
-    - companion
-    - network-api
+    - role: rpiconnect
+      tags: rpiconnect
+    - role: companion
+      tags: companion
+    - role: network-api
+      tags: network-api
