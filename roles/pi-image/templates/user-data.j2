@@ -1,0 +1,80 @@
+#cloud-config
+
+# Hostname
+{% if pi_hostname %}
+hostname: {{ pi_hostname }}
+{% endif %}
+
+# Timezone and locale
+timezone: {{ pi_timezone }}
+locale: {{ pi_locale }}
+
+# User configuration
+users:
+  - name: {{ pi_username }}
+    groups: sudo,adm,dialout,cdrom,audio,video,plugdev,games,users,input,render,netdev,gpio,i2c,spi
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+    passwd: {{ pi_password_hash }}
+{% if pi_ssh_authorized_keys | length > 0 %}
+    ssh_authorized_keys:
+{% for key in pi_ssh_authorized_keys %}
+      - {{ key }}
+{% endfor %}
+{% endif %}
+
+# SSH configuration - password auth enabled
+ssh_pwauth: {{ pi_ssh_password_auth | lower }}
+
+# SSH daemon settings
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-custom.conf
+    content: |
+      PasswordAuthentication {{ 'yes' if pi_ssh_password_auth else 'no' }}
+      PubkeyAuthentication {{ 'yes' if pi_ssh_pubkey_auth else 'no' }}
+      PermitRootLogin {{ 'yes' if pi_ssh_permit_root else 'no' }}
+      # Prevent cloud-init from overwriting this
+      # This file takes precedence over other configs
+    permissions: '0644'
+    owner: root:root
+{% if pi_disable_cloud_init_after_firstboot %}
+  - path: /etc/cloud/cloud-init.disabled
+    content: |
+      # Cloud-init disabled after first boot
+      # Delete this file to re-enable
+    permissions: '0644'
+    owner: root:root
+{% endif %}
+
+# Enable SSH service
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - systemctl restart ssh
+{% if pi_vnc_enabled | default(false) %}
+  # Enable VNC via raspi-config
+  - raspi-config nonint do_vnc 0
+{% if pi_vnc_password %}
+  # Set VNC password (for RealVNC)
+  - mkdir -p /home/{{ pi_username }}/.vnc
+  - echo "{{ pi_vnc_password }}" | vncpasswd -f > /home/{{ pi_username }}/.vnc/passwd
+  - chmod 600 /home/{{ pi_username }}/.vnc/passwd
+  - chown -R {{ pi_username }}:{{ pi_username }} /home/{{ pi_username }}/.vnc
+{% endif %}
+{% endif %}
+{% if pi_disable_cloud_init_after_firstboot %}
+  - touch /etc/cloud/cloud-init.disabled
+{% endif %}
+{% for cmd in pi_runcmd %}
+  - {{ cmd }}
+{% endfor %}
+
+# Install extra packages
+{% if pi_extra_packages %}
+packages:
+{% for pkg in pi_extra_packages %}
+  - {{ pkg }}
+{% endfor %}
+package_update: true
+{% endif %}

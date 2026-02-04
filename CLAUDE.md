@@ -18,7 +18,7 @@ cd /Users/robertstephen/thelavanderia
 ## Hosts
 
 ### Raspberry Pis (production_control group)
-- **skinnypete**: 192.168.25.171 (LAN), user: heisenberg
+- **skinnypete**: 192.168.25.172 (WiFi), user: heisenberg
 - **hank**: 100.79.51.33 (Tailscale), user: heisenberg
 
 ### OpenWRT Routers (openwrt_routers group)
@@ -68,9 +68,72 @@ sysupgrade -r /path/to/backup.tar.gz
 
 | Playbook | Target | Purpose |
 |----------|--------|---------|
-| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, companion, network-api, pinn-tools |
+| `imaging.yml` | localhost | Create customized Pi image from virgin base |
+| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, network-api |
 | `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
-| `pinn-image.yml` | Pi with USB SD reader | Prepare PINN SD cards with SSH, VNC, and Tailscale |
+
+## Imaging Playbook
+
+Creates customized Raspberry Pi OS images without modifying the virgin base. Pulls configuration from standard Ansible inventory.
+
+### Usage
+```bash
+cd /Users/robertstephen/thelavanderia
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook -i inventory/hosts.yml playbooks/imaging.yml -e "target_host=skinnypete"
+```
+
+The `target_host` must exist in `inventory/hosts.yml`. Variables are pulled from:
+- `inventory/group_vars/all.yml` - shared defaults (admin_user, password hash)
+- `inventory/group_vars/production_control.yml` - imaging defaults (timezone, SSH, VNC)
+- `inventory/host_vars/<target_host>.yml` - host-specific (WiFi credentials, overrides)
+
+### Inventory Variables for Imaging
+
+**Group defaults** (`group_vars/production_control.yml`):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `imaging_timezone` | America/Chicago | Timezone |
+| `imaging_locale` | en_US.UTF-8 | Locale |
+| `imaging_ssh_password_auth` | true | Allow SSH password login |
+| `imaging_vnc_enabled` | true | Enable VNC |
+| `imaging_wifi_country` | US | WiFi regulatory domain |
+
+**Host-specific** (`host_vars/<hostname>.yml`):
+| Variable | Purpose |
+|----------|---------|
+| `imaging_wifi_ssid` | WiFi network name |
+| `imaging_wifi_password` | WiFi password |
+| `imaging_vnc_password` | VNC password (8 char max) |
+| `imaging_extra_packages` | Additional packages to install |
+| `imaging_runcmd` | Commands to run on first boot |
+
+### Image Files
+```
+images/
+├── *-base.img           # Virgin base image (NEVER modified)
+├── raspios-<hostname>.img  # Customized output images
+└── *.img.xz             # Compressed download backup
+```
+
+### What Gets Configured
+
+The imaging playbook writes multiple config files to the boot partition:
+
+| File | Handles | Notes |
+|------|---------|-------|
+| `user-data` | User, SSH keys, hostname, WiFi, timezone | cloud-init format, WiFi via runcmd |
+| `network-config` | Ethernet (DHCP) | cloud-init format |
+| `meta-data` | Instance ID, hostname | cloud-init format |
+| `ssh` | Enable SSH on first boot | Empty file |
+
+**Important**: WiFi is configured via cloud-init `runcmd` using `nmcli`. Raspberry Pi OS Trixie uses NetworkManager (not wpa_supplicant), and WiFi radio is disabled by default.
+
+### After Flashing
+
+1. Flash image with Raspberry Pi Imager (Use custom → skip OS customization)
+2. Boot the Pi
+3. Wait ~2-3 minutes for first boot + cloud-init
+4. Connect via: `ssh heisenberg@<hostname>` or VNC to `<hostname>:5900`
 
 ## Roles
 
@@ -78,104 +141,34 @@ sysupgrade -r /path/to/backup.tar.gz
 - `base` - Common packages, user setup
 - `tailscale` - Tailscale VPN (Debian/Ubuntu)
 - `rpiconnect` - Raspberry Pi Connect
-- `companion` - Bitfocus Companion (GUI build)
+- `companion` - Bitfocus Companion (GUI build) - currently broken
 - `network-api` - Custom network API module
-- `pinn-image` - Prepare PINN SD cards for headless deployment
-- `pinn-tools` - Desktop tools to view PINN Tailscale IP and reboot to PINN
+- `pi-image` - Write cloud-init config to Pi images
 
 ### OpenWRT Roles
 - `tailscale-openwrt` - Updates Tailscale from official ARM64 static builds
 
 ## Key Files
-- `inventory/hosts.yml` - All hosts and groups
-- `inventory/group_vars/all.yml` - Variables for Pis (admin_user, companion_version, PINN config, Tailscale auth key)
-- `inventory/group_vars/openwrt_routers.yml` - OpenWRT-specific vars (shell type, python path)
 
-## PINN Image Preparation
-
-### Overview
-The `pinn-image` role prepares SD cards with PINN (multi-boot manager) pre-configured for headless operation with SSH, VNC, and Tailscale.
-
-### Usage
-Insert an SD card into a Pi's USB port (e.g., skinnypete), then run:
-```bash
-cd /Users/robertstephen/thelavanderia
-/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook -i inventory/hosts.yml playbooks/pinn-image.yml -e "confirm_device=yes" -e "tailscale_auth_key=tskey-auth-xxx"
+### Inventory Structure
+```
+inventory/
+├── hosts.yml                      # All hosts and groups
+├── group_vars/
+│   ├── all.yml                    # Shared: admin_user, password hash, Tailscale key
+│   ├── production_control.yml     # Pi imaging defaults: timezone, SSH, VNC
+│   └── openwrt_routers.yml        # OpenWRT: shell type, python path
+└── host_vars/
+    ├── skinnypete.yml             # WiFi credentials, host-specific config
+    └── hank.yml                   # (create as needed)
 ```
 
-### What It Does
-1. Formats the SD card as FAT32
-2. Downloads and extracts PINN
-3. Configures `cmdline.txt` with SSH, VNC, and passwords
-4. Installs Tailscale static binaries
-5. Writes the Tailscale auth key
-
-### Configuration Variables (in `group_vars/all.yml`)
-| Variable | Purpose |
-|----------|---------|
-| `pinn_ssh_password` | SSH password for root user (default: bluesky) |
-| `pinn_vnc_password` | VNC password (default: bluesky) |
-| `tailscale_auth_key` | Reusable Tailscale auth key with `tag:pinn` |
-
-### After Booting PINN
-1. SSH to the Pi: `ssh root@<ip>` (password: bluesky)
-2. Start Tailscale manually: `/mnt/mmcblk0p1/tailscale/init.sh`
-3. Device appears in Tailscale admin as `pinn-XXXXXXXX` with `tag:pinn`
-
-### Tailscale ACL Setup
-The `tag:pinn` tag must be defined in your Tailscale ACL policy:
-```json
-{
-  "tagOwners": {
-    "tag:pinn": ["autogroup:admin"]
-  }
-}
+### Image Files
 ```
-Tagged devices have key expiry disabled - they stay connected indefinitely after registration.
-
-### Target Device
-Default target is `/dev/sda`. Override with:
-```bash
--e "pinn_target_device=/dev/sdb"
-```
-
-### PINN Headless Operation
-- **SSH**: `root@<ip>` with configured password
-- **VNC**: Port 5900 with configured password (view PINN GUI remotely)
-- **Tailscale**: After running init script, accessible via Tailscale IP
-
-## PINN Tools (Installed OS)
-
-The `pinn-tools` role installs utilities on the running Raspberry Pi OS to manage PINN remotely.
-
-### Commands Installed
-| Command | Purpose |
-|---------|---------|
-| `reboot-to-pinn` | Creates trigger file and reboots into PINN recovery |
-| `pinn-info` | Shows PINN's Tailscale IP and offers to reboot |
-
-### Desktop Shortcut
-A "PINN Info" desktop shortcut is added that:
-1. Displays PINN's saved Tailscale IP (from PINN partition)
-2. Shows the PINN hostname (`pinn-XXXXXXXX`)
-3. Offers to reboot into PINN
-
-### How It Works
-1. When PINN runs Tailscale init, it saves its IP to `/tailscale/pinn-tailscale-ip` on the PINN partition
-2. The installed OS can read this file to display the PINN Tailscale IP
-3. `reboot-to-pinn` creates `/boot/firmware/PINN_TRIGGER` which tells PINN to show recovery menu
-
-### Remote Workflow
-From anywhere via Tailscale:
-```bash
-# Check PINN info
-ssh heisenberg@<pi-tailscale-ip> "pinn-info"
-
-# Reboot to PINN
-ssh heisenberg@<pi-tailscale-ip> "reboot-to-pinn"
-
-# Then connect to PINN via its Tailscale IP
-ssh root@<pinn-tailscale-ip>
+images/
+├── 2025-12-04-raspios-trixie-arm64-base.img   # Virgin base (never modify)
+├── raspios-skinnypete.img                      # Customized for skinnypete
+└── *.img.xz                                    # Compressed backup
 ```
 
 ## Troubleshooting
@@ -194,3 +187,21 @@ ssh root@192.168.8.1 "opkg update && opkg install python3 python3-urllib"
 
 ### sftp/scp warnings
 Safe to ignore. OpenWRT lacks sftp-server; Ansible falls back to piping through SSH.
+
+### Pi won't connect to WiFi after imaging
+- **Raspberry Pi OS Trixie uses NetworkManager**, not wpa_supplicant
+- WiFi radio is **disabled by default** - must run `nmcli radio wifi on` first
+- WiFi is configured via cloud-init `runcmd` using `nmcli device wifi connect`
+- The imaging playbook handles this automatically in user-data
+- To debug: connect via ethernet and check `nmcli radio` and `nmcli device status`
+
+### Pi not reachable after first boot
+- Wait 2-3 minutes for cloud-init to complete
+- Try mDNS: `ping <hostname>.local`
+- If ethernet connected, check link-local: `ping 169.254.x.x`
+- Check router DHCP client list for new devices
+
+### Cloud-init not running
+- Verify `user-data`, `meta-data`, and `network-config` exist in boot partition
+- Check cloud-init logs: `sudo cat /var/log/cloud-init-output.log`
+- Errors like "No access points defined" = bad network-config format (use wpa_supplicant.conf instead)

@@ -1,0 +1,141 @@
+---
+# Raspberry Pi Imaging Playbook
+#
+# Creates a customized Raspberry Pi OS image from a virgin base image.
+# Pulls configuration from the standard Ansible inventory.
+#
+# Usage:
+#   cd /Users/robertstephen/thelavanderia
+#   ansible-playbook -i inventory/hosts.yml playbooks/imaging.yml -e "target_host=skinnypete"
+#
+# The target_host must exist in inventory/hosts.yml
+# Variables are pulled from:
+#   - inventory/group_vars/all.yml
+#   - inventory/group_vars/production_control.yml
+#   - inventory/host_vars/<target_host>.yml
+#
+# Images:
+#   Base (virgin):  images/*-base.img (never modified)
+#   Output:         images/raspios-<target_host>.img (customized)
+
+- name: Create Customized Raspberry Pi Image
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    # Base image location
+    pi_base_image_dir: "{{ playbook_dir }}/../images"
+    pi_base_image_pattern: "*-base.img"
+
+  pre_tasks:
+    - name: Verify target_host is provided
+      ansible.builtin.fail:
+        msg: "target_host is required. Use -e 'target_host=skinnypete'"
+      when: target_host is not defined or target_host == ""
+
+    - name: Verify target_host exists in inventory
+      ansible.builtin.fail:
+        msg: "Host '{{ target_host }}' not found in inventory"
+      when: target_host not in hostvars
+
+    - name: Find base image
+      ansible.builtin.find:
+        paths: "{{ pi_base_image_dir }}"
+        patterns: "{{ pi_base_image_pattern }}"
+      register: base_images
+
+    - name: Fail if no base image found
+      ansible.builtin.fail:
+        msg: "No base image found matching {{ pi_base_image_dir }}/{{ pi_base_image_pattern }}"
+      when: base_images.files | length == 0
+
+    - name: Set base image path
+      ansible.builtin.set_fact:
+        pi_base_image: "{{ (base_images.files | sort(attribute='mtime') | last).path }}"
+
+    - name: Set output image path
+      ansible.builtin.set_fact:
+        pi_output_image: "{{ pi_base_image_dir }}/raspios-{{ target_host }}.img"
+
+    - name: Pull variables from inventory
+      ansible.builtin.set_fact:
+        # Core settings from inventory
+        pi_hostname: "{{ target_host }}"
+        pi_username: "{{ hostvars[target_host]['admin_user'] | default('heisenberg') }}"
+        pi_password_hash: "{{ hostvars[target_host]['admin_password_hash'] | default('') }}"
+        pi_plain_password: "{{ hostvars[target_host]['imaging_plain_password'] | default('bluesky') }}"
+
+        # Timezone and locale
+        pi_timezone: "{{ hostvars[target_host]['imaging_timezone'] | default('America/Chicago') }}"
+        pi_locale: "{{ hostvars[target_host]['imaging_locale'] | default('en_US.UTF-8') }}"
+        pi_keyboard_layout: "{{ hostvars[target_host]['imaging_keyboard_layout'] | default('us') }}"
+
+        # SSH configuration
+        pi_ssh_password_auth: "{{ hostvars[target_host]['imaging_ssh_password_auth'] | default(true) }}"
+        pi_ssh_pubkey_auth: "{{ hostvars[target_host]['imaging_ssh_pubkey_auth'] | default(true) }}"
+        pi_ssh_permit_root: "{{ hostvars[target_host]['imaging_ssh_permit_root'] | default(false) }}"
+
+        # VNC configuration
+        pi_vnc_enabled: "{{ hostvars[target_host]['imaging_vnc_enabled'] | default(false) }}"
+        pi_vnc_password: "{{ hostvars[target_host]['imaging_vnc_password'] | default('') }}"
+
+        # WiFi configuration
+        pi_wifi_country: "{{ hostvars[target_host]['imaging_wifi_country'] | default('US') }}"
+        pi_wifi_ssid: "{{ hostvars[target_host]['imaging_wifi_ssid'] | default('') }}"
+        pi_wifi_password: "{{ hostvars[target_host]['imaging_wifi_password'] | default('') }}"
+
+        # Extra packages and commands
+        pi_extra_packages: "{{ hostvars[target_host]['imaging_extra_packages'] | default([]) }}"
+        pi_runcmd: "{{ hostvars[target_host]['imaging_runcmd'] | default([]) }}"
+
+        # Role settings
+        pi_disable_cloud_init_after_firstboot: true
+
+    - name: Display configuration
+      ansible.builtin.debug:
+        msg: |
+          Target host:    {{ target_host }}
+          Base image:     {{ pi_base_image }}
+          Output image:   {{ pi_output_image }}
+
+          Configuration from inventory:
+          - Username:     {{ pi_username }}
+          - Timezone:     {{ pi_timezone }}
+          - WiFi SSID:    {{ pi_wifi_ssid | default('(none)') }}
+          - VNC enabled:  {{ pi_vnc_enabled }}
+          - SSH password: {{ pi_ssh_password_auth }}
+
+    - name: Copy base image to output (this may take a few minutes)
+      ansible.builtin.copy:
+        src: "{{ pi_base_image }}"
+        dest: "{{ pi_output_image }}"
+        mode: '0644'
+        force: true
+
+    - name: Set image file for pi-image role
+      ansible.builtin.set_fact:
+        pi_image_file: "{{ pi_output_image }}"
+
+  roles:
+    - pi-image
+
+  post_tasks:
+    - name: Summary
+      ansible.builtin.debug:
+        msg: |
+
+          Image ready: {{ pi_output_image }}
+
+          Configuration:
+          - Hostname: {{ pi_hostname }}
+          - Username: {{ pi_username }}
+          - VNC: {{ 'enabled' if pi_vnc_enabled else 'disabled' }}
+          - WiFi: {{ pi_wifi_ssid if pi_wifi_ssid else '(none)' }}
+
+          To flash to SD card:
+            sudo dd if={{ pi_output_image }} of=/dev/rdiskN bs=4m status=progress
+
+          After boot, connect via:
+            ssh {{ pi_username }}@{{ pi_hostname }}
+            {% if pi_vnc_enabled %}VNC: {{ pi_hostname }}:5900{% endif %}

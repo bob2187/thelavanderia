@@ -1,0 +1,54 @@
+---
+# Pi Image Customization Variables
+# These control what cloud-init does on first boot
+
+# Target image file (downloaded Raspberry Pi OS .img file)
+pi_image_file: ""
+
+# Mount point for image partitions
+pi_image_mount_base: "/tmp/pi-image-mount"
+
+# User configuration
+pi_username: "heisenberg"
+pi_password_hash: "{{ admin_password_hash | default('$6$rounds=4096$salt$hash') }}"
+
+# SSH configuration
+pi_ssh_enabled: true
+pi_ssh_password_auth: true
+pi_ssh_pubkey_auth: true
+pi_ssh_permit_root: false
+
+# SSH authorized keys (list of public keys)
+# Will try to read from ~/.ssh/id_*.pub if empty
+pi_ssh_authorized_keys: []
+
+# Hostname (leave empty for default)
+pi_hostname: ""
+
+# Timezone
+pi_timezone: "America/Chicago"
+
+# Locale
+pi_locale: "en_US.UTF-8"
+
+# Keyboard layout
+pi_keyboard_layout: "us"
+
+# WiFi configuration (optional)
+pi_wifi_country: "US"
+pi_wifi_ssid: ""
+pi_wifi_password: ""
+
+# VNC configuration
+pi_vnc_enabled: false
+pi_vnc_password: ""
+
+# Disable cloud-init after first boot (recommended)
+pi_disable_cloud_init_after_firstboot: true
+
+# Additional packages to install on first boot
+pi_extra_packages: []
+
+# Custom commands to run at end of first boot
+pi_runcmd: []
+#  - "echo 'Hello from first boot'"

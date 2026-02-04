@@ -1,0 +1,18 @@
+---
+# Skinnypete-specific configuration
+# Used by both imaging.yml and production-control.yml
+
+# WiFi configuration
+imaging_wifi_ssid: "FamiliaStephen5GHz.HMO"
+imaging_wifi_password: "robbieisgreat2335"
+
+# VNC password (8 characters max for RealVNC)
+imaging_vnc_password: "bluesky"
+
+# Any skinnypete-specific packages
+# imaging_extra_packages:
+#   - vim
+
+# Any skinnypete-specific first-boot commands
+# imaging_runcmd:
+#   - "echo 'skinnypete online'"

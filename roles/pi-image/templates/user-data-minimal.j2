@@ -1,0 +1,26 @@
+#cloud-config
+
+hostname: {{ pi_hostname }}
+manage_etc_hosts: true
+
+users:
+  - name: {{ pi_username }}
+    groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: {{ pi_plain_password }}
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+
+ssh_pwauth: true
+
+chpasswd:
+  expire: false
+{% if pi_wifi_ssid %}
+
+runcmd:
+  - nmcli radio wifi on
+  - sleep 3
+  - nmcli device wifi rescan || true
+  - sleep 5
+  - nmcli device wifi connect "{{ pi_wifi_ssid }}" password "{{ pi_wifi_password }}" || true
+{% endif %}

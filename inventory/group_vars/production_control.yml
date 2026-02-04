@@ -1,0 +1,31 @@
+---
+# Imaging defaults for all production control Pis
+# These can be overridden in host_vars/<hostname>.yml
+
+# Timezone and locale
+imaging_timezone: "America/Chicago"
+imaging_locale: "en_US.UTF-8"
+imaging_keyboard_layout: "us"
+
+# SSH configuration
+imaging_ssh_password_auth: true
+imaging_ssh_pubkey_auth: true
+imaging_ssh_permit_root: false
+
+# Plain text password for cloud-init (used on first boot)
+imaging_plain_password: "bluesky"
+
+# VNC configuration (built-in RealVNC)
+imaging_vnc_enabled: true
+imaging_vnc_password: ""  # Set per-host in host_vars
+
+# WiFi defaults (override per-host if needed)
+imaging_wifi_country: "US"
+imaging_wifi_ssid: ""
+imaging_wifi_password: ""
+
+# Extra packages to install on first boot
+imaging_extra_packages: []
+
+# Commands to run on first boot
+imaging_runcmd: []

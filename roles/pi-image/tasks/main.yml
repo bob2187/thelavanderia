@@ -1,0 +1,189 @@
+---
+# Pi Image Customization Role
+# Mounts a Raspberry Pi OS image and configures cloud-init
+
+- name: Check if running on macOS or Linux
+  ansible.builtin.set_fact:
+    is_macos: "{{ ansible_os_family == 'Darwin' }}"
+
+- name: Find local SSH public keys
+  ansible.builtin.find:
+    paths: "{{ lookup('env', 'HOME') }}/.ssh"
+    patterns: "id_*.pub"
+  register: ssh_pubkey_files
+  delegate_to: localhost
+  when: pi_ssh_authorized_keys | length == 0
+
+- name: Read SSH public keys
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  register: ssh_pubkey_contents
+  loop: "{{ ssh_pubkey_files.files | default([]) }}"
+  delegate_to: localhost
+  when: pi_ssh_authorized_keys | length == 0
+
+- name: Set SSH authorized keys from local files
+  ansible.builtin.set_fact:
+    pi_ssh_authorized_keys: "{{ ssh_pubkey_contents.results | default([]) | map(attribute='content') | map('b64decode') | map('trim') | list }}"
+  when: pi_ssh_authorized_keys | length == 0 and ssh_pubkey_contents.results | default([]) | length > 0
+
+- name: Verify image file exists
+  ansible.builtin.stat:
+    path: "{{ pi_image_file }}"
+  register: image_stat
+  delegate_to: localhost
+
+- name: Fail if image not found
+  ansible.builtin.fail:
+    msg: "Image file not found: {{ pi_image_file }}"
+  when: not image_stat.stat.exists
+
+# === macOS workflow ===
+- name: macOS - Create mount directory
+  ansible.builtin.file:
+    path: "{{ pi_image_mount_base }}/boot"
+    state: directory
+    mode: '0755'
+  when: is_macos
+  delegate_to: localhost
+
+- name: macOS - Attach image and get device info
+  ansible.builtin.shell: |
+    hdiutil attach -imagekey diskimage-class=CRawDiskImage -nomount "{{ pi_image_file }}" 2>&1
+  register: hdiutil_attach
+  when: is_macos
+  delegate_to: localhost
+
+- name: macOS - Parse boot partition device
+  ansible.builtin.set_fact:
+    boot_device: "{{ hdiutil_attach.stdout_lines | select('search', 'Windows_FAT_32|DOS_FAT_32|EFI') | first | split() | first }}"
+    image_disk: "{{ hdiutil_attach.stdout_lines | select('search', 'GUID_partition_scheme|FDisk_partition_scheme') | first | split() | first }}"
+  when: is_macos
+  delegate_to: localhost
+
+- name: macOS - Mount boot partition
+  ansible.builtin.shell: |
+    diskutil mount -mountPoint "{{ pi_image_mount_base }}/boot" "{{ boot_device }}"
+  when: is_macos
+  delegate_to: localhost
+
+# === Linux workflow (Pi or other Linux) ===
+- name: Linux - Create mount directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ pi_image_mount_base }}/boot"
+  become: true
+  when: not is_macos
+
+- name: Linux - Set up loop device
+  ansible.builtin.shell: |
+    losetup -fP "{{ pi_image_file }}"
+    losetup -j "{{ pi_image_file }}" | cut -d: -f1
+  register: loop_device
+  become: true
+  when: not is_macos
+
+- name: Linux - Mount boot partition
+  ansible.posix.mount:
+    path: "{{ pi_image_mount_base }}/boot"
+    src: "{{ loop_device.stdout }}p1"
+    fstype: vfat
+    state: mounted
+  become: true
+  when: not is_macos
+
+# === Configure cloud-init (both platforms) ===
+- name: Write cloud-init user-data (minimal)
+  ansible.builtin.template:
+    src: user-data-minimal.j2
+    dest: "{{ pi_image_mount_base }}/boot/user-data"
+    mode: '0644'
+  become: "{{ not is_macos }}"
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+
+- name: Write cloud-init meta-data
+  ansible.builtin.copy:
+    content: |
+      instance-id: pi-{{ pi_hostname | default('custom') }}-{{ ansible_date_time.epoch }}
+      local-hostname: {{ pi_hostname | default('raspberrypi') }}
+    dest: "{{ pi_image_mount_base }}/boot/meta-data"
+    mode: '0644'
+  become: "{{ not is_macos }}"
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+
+- name: Write cloud-init network-config
+  ansible.builtin.template:
+    src: network-config.j2
+    dest: "{{ pi_image_mount_base }}/boot/network-config"
+    mode: '0644'
+  become: "{{ not is_macos }}"
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+
+- name: Write wpa_supplicant.conf (traditional Pi WiFi method)
+  ansible.builtin.copy:
+    content: |
+      country={{ pi_wifi_country | default('US') }}
+      ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+      update_config=1
+
+      network={
+          ssid="{{ pi_wifi_ssid }}"
+          psk="{{ pi_wifi_password }}"
+          key_mgmt=WPA-PSK
+      }
+    dest: "{{ pi_image_mount_base }}/boot/wpa_supplicant.conf"
+    mode: '0600'
+  become: "{{ not is_macos }}"
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+  when: pi_wifi_ssid | default('') | length > 0
+
+- name: Ensure SSH is enabled (empty ssh file)
+  ansible.builtin.file:
+    path: "{{ pi_image_mount_base }}/boot/ssh"
+    state: touch
+    mode: '0644'
+  become: "{{ not is_macos }}"
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+
+# === Cleanup ===
+- name: Sync filesystems
+  ansible.builtin.command: sync
+  delegate_to: "{{ 'localhost' if is_macos else omit }}"
+
+- name: macOS - Unmount and detach image
+  ansible.builtin.shell: |
+    diskutil unmount "{{ pi_image_mount_base }}/boot" || true
+    hdiutil detach "{{ image_disk }}"
+  when: is_macos
+  delegate_to: localhost
+
+- name: Linux - Unmount boot partition
+  ansible.posix.mount:
+    path: "{{ pi_image_mount_base }}/boot"
+    state: unmounted
+  become: true
+  when: not is_macos
+
+- name: Linux - Detach loop device
+  ansible.builtin.shell: |
+    losetup -d {{ loop_device.stdout }}
+  become: true
+  when: not is_macos
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: |
+      Image customized successfully: {{ pi_image_file }}
+
+      Cloud-init configured with:
+      - Username: {{ pi_username }}
+      - SSH password auth: {{ pi_ssh_password_auth }}
+      - SSH keys: {{ pi_ssh_authorized_keys | length }} key(s) installed
+      - Hostname: {{ pi_hostname | default('(default)') }}
+      - Timezone: {{ pi_timezone }}
+      - Cloud-init disabled after first boot: {{ pi_disable_cloud_init_after_firstboot }}
+
+      Flash this image to an SD card and boot your Pi.
