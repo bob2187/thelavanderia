@@ -146,6 +146,15 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 ### tailscale-openwrt
 - Updates Tailscale on GL.iNET routers from official ARM64 static builds
 
+### base-cloud
+- Base setup for cloud VMs (Vultr, etc.)
+- Deploys SSH authorized keys from `admin_ssh_keys`
+- Hardens SSH: disables password auth, permits root login via key only
+- Variables:
+  - `ssh_password_auth`: Enable/disable password auth (default: false)
+  - `ssh_permit_root_login`: Root login policy (default: prohibit-password)
+  - `cloud_ssh_user`: User for SSH key deployment (default: root)
+
 ### unity-relay
 - Configures iptables NAT rules for port forwarding via Tailscale
 - Forwards Unity Intercom traffic from public IP to Mac Mini
