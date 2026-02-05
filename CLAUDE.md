@@ -60,6 +60,7 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 - **vultr**: Debian 12 VM on Vultr
   - Public IP: 155.138.253.242
   - Tailscale IP: 100.90.33.88
+  - DNS: unity.showdropgo.io → 155.138.253.242
   - User: root
   - Purpose: Unity Intercom relay - forwards port 20101 to Mac Mini (100.109.197.33)
 
@@ -148,6 +149,7 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 ### unity-relay
 - Configures iptables NAT rules for port forwarding via Tailscale
 - Forwards Unity Intercom traffic from public IP to Mac Mini
+- Client connects to: `unity.showdropgo.io:20101`
 - Variables:
   - `unity_relay_target_ip`: Tailscale IP of destination (default: 100.109.197.33)
   - `unity_relay_ports`: List of ports to forward (default: [20101])
