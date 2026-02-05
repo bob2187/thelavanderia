@@ -88,6 +88,21 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 /Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/production-control.yml --limit skinnypete -e "tailscale_force_reauth=true"
 ```
 
+### Cloud VM Deployment
+
+For new cloud VMs, use an auth key for automated Tailscale setup:
+
+1. Generate an auth key at https://login.tailscale.com/admin/settings/keys
+2. Store in vault: `inventory/group_vars/cloud_vms/vault.yml`
+   ```yaml
+   vault_tailscale_auth_key: "tskey-auth-xxx"
+   ```
+3. Uncomment `tailscale_auth_key` in `inventory/group_vars/cloud_vms/vars.yml`
+4. Run playbook with public IP:
+   ```bash
+   /Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/vultr.yml -e "ansible_host=<PUBLIC_IP>" --ask-pass
+   ```
+
 ## Roles
 
 ### base
