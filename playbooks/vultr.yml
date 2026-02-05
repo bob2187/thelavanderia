@@ -1,0 +1,13 @@
+---
+# Vultr cloud VM playbook
+# Configures Tailscale and Unity Intercom port forwarding
+
+- name: Configure Vultr VM
+  hosts: vultr
+  become: yes
+
+  roles:
+    - role: tailscale
+      tags: tailscale
+    - role: unity-relay
+      tags: unity-relay
