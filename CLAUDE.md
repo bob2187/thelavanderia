@@ -12,13 +12,41 @@ Ansible is installed via pip in the user's Python directory:
 To run playbooks:
 ```bash
 cd /Users/robertstephen/thelavanderia
-/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook -i inventory/hosts.yml playbooks/<playbook>.yml
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/<playbook>.yml
+```
+
+## Ansible Vault
+
+Sensitive data (passwords, WiFi credentials) is encrypted with Ansible Vault.
+
+### Vault Structure
+```
+inventory/
+├── group_vars/
+│   ├── all/
+│   │   ├── vars.yml      # Public variables
+│   │   └── vault.yml     # Encrypted: vault_admin_password_hash
+│   ├── production_control/
+│   │   ├── vars.yml      # Imaging defaults, tailscale_accept_routes
+│   │   └── vault.yml     # Encrypted: vault_imaging_plain_password
+│   └── openwrt_routers.yml
+└── host_vars/
+    ├── skinnypete.yml           # References vault variables
+    └── skinnypete_vault.yml     # Encrypted: WiFi/VNC passwords
+```
+
+### Vault Password
+Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
+
+### Editing Vault Files
+```bash
+/Users/robertstephen/Library/Python/3.9/bin/ansible-vault edit inventory/group_vars/all/vault.yml
 ```
 
 ## Hosts
 
 ### Raspberry Pis (production_control group)
-- **skinnypete**: 192.168.25.172 (WiFi), user: heisenberg
+- **skinnypete**: 100.105.164.64 (Tailscale), 192.168.25.172 (WiFi), user: heisenberg
 - **hank**: 100.79.51.33 (Tailscale), user: heisenberg
 
 ### OpenWRT Routers (openwrt_routers group)
@@ -27,6 +55,106 @@ cd /Users/robertstephen/thelavanderia
   - Tailscale IP: 100.71.25.22
   - User: root
   - SSH key is installed in `/etc/dropbear/authorized_keys`
+
+## Playbooks
+
+| Playbook | Target | Purpose |
+|----------|--------|---------|
+| `imaging.yml` | localhost | Create customized Pi image from virgin base |
+| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, network-api |
+| `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
+
+### Running Playbooks
+
+```bash
+# Standard run (uses Tailscale IP from inventory)
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/production-control.yml --limit skinnypete
+
+# First-time setup via local IP (before Tailscale)
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/production-control.yml --limit skinnypete -e "ansible_host=192.168.25.172" --ask-pass --ask-become-pass
+
+# Skip specific roles
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/production-control.yml --limit skinnypete --skip-tags network-api
+
+# Force Tailscale re-authentication
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/production-control.yml --limit skinnypete -e "tailscale_force_reauth=true"
+```
+
+## Roles
+
+### base
+- Sets hostname
+- Updates apt and upgrades packages
+- Creates admin user (heisenberg) with passwordless sudo
+- Auto-detects and removes non-admin users (UID >= 1000)
+- Deploys SSH authorized keys
+- Enables SSH, VNC, and auto-login to desktop
+
+### tailscale
+- Installs Tailscale VPN
+- **Interactive authentication**: Displays login URL, waits for user to authenticate
+- Auto-detects if offline and re-authenticates
+- Supports `tailscale_force_reauth=true` to force re-authentication
+- Supports `tailscale_auth_key` for automated auth (store in vault)
+
+### tailscale-autoroute
+- Automatically advertises local subnets
+- Enables exit node capability
+- Configures IP forwarding
+
+**Important**: `tailscale_accept_routes: false` (default for production_control) prevents routing conflicts when the Pi is on a local network. Set to `true` in host_vars if the Pi needs to reach other Tailscale subnets.
+
+### rpiconnect
+- Installs Raspberry Pi Connect
+- **Interactive authentication**: Displays login URL, waits for user to authenticate
+- Supports `skip` to skip authentication
+
+### companion (currently broken)
+- Bitfocus Companion (GUI build)
+
+### network-api
+- Flask REST API for network configuration
+- Companion module for button control
+
+### pi-image
+- Writes cloud-init config to Pi images for imaging.yml playbook
+
+### tailscale-openwrt
+- Updates Tailscale on GL.iNET routers from official ARM64 static builds
+
+## Inventory Variables
+
+### Key Variables (group_vars/all/vars.yml)
+| Variable | Purpose |
+|----------|---------|
+| `admin_user` | Username for all Pis (heisenberg) |
+| `admin_password_hash` | Password hash (from vault) |
+| `admin_ssh_keys` | SSH public keys to deploy |
+| `remove_old_users` | Auto-remove non-admin users (default: true) |
+
+### Tailscale Variables (group_vars/production_control/vars.yml)
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `tailscale_accept_routes` | false | Accept subnet routes from other nodes |
+| `tailscale_auth_key` | "" | Auth key for automated signin |
+| `tailscale_force_reauth` | false | Force re-authentication |
+
+### Imaging Variables (group_vars/production_control/vars.yml)
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `imaging_timezone` | America/Chicago | Timezone |
+| `imaging_locale` | en_US.UTF-8 | Locale |
+| `imaging_ssh_password_auth` | true | Allow SSH password login |
+| `imaging_vnc_enabled` | true | Enable VNC |
+| `imaging_wifi_country` | US | WiFi regulatory domain |
+
+### Host-specific (host_vars/<hostname>.yml)
+| Variable | Purpose |
+|----------|---------|
+| `imaging_wifi_ssid` | WiFi network name |
+| `imaging_wifi_password` | WiFi password (from vault) |
+| `imaging_vnc_password` | VNC password (from vault) |
+| `local_ip` | Local network IP (for override) |
 
 ## OpenWRT/GL.iNET Notes
 
@@ -44,15 +172,12 @@ opkg update && opkg install python3 python3-urllib
 The openwrt.yml playbook handles this automatically via a `raw` pre-task.
 
 ### musl vs glibc Limitation
-OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Companion) won't work without recompilation. This affects:
-- Bitfocus Companion (won't run on OpenWRT)
-- Companion Satellite (likely same issue)
-- Any software with native Node.js modules
+OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Companion) won't work without recompilation.
 
 ### Tailscale on GL.iNET
 - Installed at: `/usr/sbin/tailscale`, `/usr/sbin/tailscaled`
 - Init script: `/etc/init.d/tailscale`
-- GL.iNET ships outdated versions; use `tailscale-openwrt` role to update from official builds
+- GL.iNET ships outdated versions; use `tailscale-openwrt` role to update
 - Update via LAN IP to avoid losing connectivity mid-update
 
 ### Router Backup/Restore
@@ -64,144 +189,56 @@ sysupgrade -b /tmp/backup.tar.gz
 sysupgrade -r /path/to/backup.tar.gz
 ```
 
-## Playbooks
-
-| Playbook | Target | Purpose |
-|----------|--------|---------|
-| `imaging.yml` | localhost | Create customized Pi image from virgin base |
-| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, network-api |
-| `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
-
 ## Imaging Playbook
 
-Creates customized Raspberry Pi OS images without modifying the virgin base. Pulls configuration from standard Ansible inventory.
+Creates customized Raspberry Pi OS images without modifying the virgin base.
 
 ### Usage
 ```bash
-cd /Users/robertstephen/thelavanderia
-/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook -i inventory/hosts.yml playbooks/imaging.yml -e "target_host=skinnypete"
+/Users/robertstephen/Library/Python/3.9/bin/ansible-playbook playbooks/imaging.yml -e "target_host=skinnypete"
 ```
-
-The `target_host` must exist in `inventory/hosts.yml`. Variables are pulled from:
-- `inventory/group_vars/all.yml` - shared defaults (admin_user, password hash)
-- `inventory/group_vars/production_control.yml` - imaging defaults (timezone, SSH, VNC)
-- `inventory/host_vars/<target_host>.yml` - host-specific (WiFi credentials, overrides)
-
-### Inventory Variables for Imaging
-
-**Group defaults** (`group_vars/production_control.yml`):
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `imaging_timezone` | America/Chicago | Timezone |
-| `imaging_locale` | en_US.UTF-8 | Locale |
-| `imaging_ssh_password_auth` | true | Allow SSH password login |
-| `imaging_vnc_enabled` | true | Enable VNC |
-| `imaging_wifi_country` | US | WiFi regulatory domain |
-
-**Host-specific** (`host_vars/<hostname>.yml`):
-| Variable | Purpose |
-|----------|---------|
-| `imaging_wifi_ssid` | WiFi network name |
-| `imaging_wifi_password` | WiFi password |
-| `imaging_vnc_password` | VNC password (8 char max) |
-| `imaging_extra_packages` | Additional packages to install |
-| `imaging_runcmd` | Commands to run on first boot |
 
 ### Image Files
 ```
 images/
-├── *-base.img           # Virgin base image (NEVER modified)
+├── *-base.img              # Virgin base image (NEVER modified)
 ├── raspios-<hostname>.img  # Customized output images
-└── *.img.xz             # Compressed download backup
+└── *.img.xz                # Compressed backup
 ```
 
-### What Gets Configured
-
-The imaging playbook writes multiple config files to the boot partition:
-
-| File | Handles | Notes |
-|------|---------|-------|
-| `user-data` | User, SSH keys, hostname, WiFi, timezone | cloud-init format, WiFi via runcmd |
-| `network-config` | Ethernet (DHCP) | cloud-init format |
-| `meta-data` | Instance ID, hostname | cloud-init format |
-| `ssh` | Enable SSH on first boot | Empty file |
-
-**Important**: WiFi is configured via cloud-init `runcmd` using `nmcli`. Raspberry Pi OS Trixie uses NetworkManager (not wpa_supplicant), and WiFi radio is disabled by default.
-
 ### After Flashing
-
 1. Flash image with Raspberry Pi Imager (Use custom → skip OS customization)
 2. Boot the Pi
 3. Wait ~2-3 minutes for first boot + cloud-init
 4. Connect via: `ssh heisenberg@<hostname>` or VNC to `<hostname>:5900`
 
-## Roles
-
-### Raspberry Pi Roles
-- `base` - Common packages, user setup
-- `tailscale` - Tailscale VPN (Debian/Ubuntu)
-- `rpiconnect` - Raspberry Pi Connect
-- `companion` - Bitfocus Companion (GUI build) - currently broken
-- `network-api` - Custom network API module
-- `pi-image` - Write cloud-init config to Pi images
-
-### OpenWRT Roles
-- `tailscale-openwrt` - Updates Tailscale from official ARM64 static builds
-
-## Key Files
-
-### Inventory Structure
-```
-inventory/
-├── hosts.yml                      # All hosts and groups
-├── group_vars/
-│   ├── all.yml                    # Shared: admin_user, password hash, Tailscale key
-│   ├── production_control.yml     # Pi imaging defaults: timezone, SSH, VNC
-│   └── openwrt_routers.yml        # OpenWRT: shell type, python path
-└── host_vars/
-    ├── skinnypete.yml             # WiFi credentials, host-specific config
-    └── hank.yml                   # (create as needed)
-```
-
-### Image Files
-```
-images/
-├── 2025-12-04-raspios-trixie-arm64-base.img   # Virgin base (never modify)
-├── raspios-skinnypete.img                      # Customized for skinnypete
-└── *.img.xz                                    # Compressed backup
-```
-
 ## Troubleshooting
 
 ### SSH host key issues
-Each IP needs its host key accepted separately:
 ```bash
 ssh -o StrictHostKeyChecking=accept-new user@host "echo connected"
 ```
 
+### Tailscale shows offline but logged in
+Run `sudo tailscale up --accept-routes=false` to reconnect. The playbook handles this automatically.
+
+### Local IP unreachable after Tailscale setup
+If `tailscale_accept_routes: true`, the Pi may route local traffic through Tailscale. Set `tailscale_accept_routes: false` in group_vars.
+
+### Pi won't connect to WiFi after imaging
+- Raspberry Pi OS Trixie uses NetworkManager, not wpa_supplicant
+- WiFi radio is disabled by default - cloud-init enables it
+- Debug: `nmcli radio` and `nmcli device status`
+
+### RPI Connect signin fails
+Restart the service before signin:
+```bash
+systemctl --user restart rpi-connect
+rpi-connect signin
+```
+
 ### Ansible "not found" errors on OpenWRT
-Usually means Python isn't installed. The playbook pre-task handles this, but manually:
+Python isn't installed:
 ```bash
 ssh root@192.168.8.1 "opkg update && opkg install python3 python3-urllib"
 ```
-
-### sftp/scp warnings
-Safe to ignore. OpenWRT lacks sftp-server; Ansible falls back to piping through SSH.
-
-### Pi won't connect to WiFi after imaging
-- **Raspberry Pi OS Trixie uses NetworkManager**, not wpa_supplicant
-- WiFi radio is **disabled by default** - must run `nmcli radio wifi on` first
-- WiFi is configured via cloud-init `runcmd` using `nmcli device wifi connect`
-- The imaging playbook handles this automatically in user-data
-- To debug: connect via ethernet and check `nmcli radio` and `nmcli device status`
-
-### Pi not reachable after first boot
-- Wait 2-3 minutes for cloud-init to complete
-- Try mDNS: `ping <hostname>.local`
-- If ethernet connected, check link-local: `ping 169.254.x.x`
-- Check router DHCP client list for new devices
-
-### Cloud-init not running
-- Verify `user-data`, `meta-data`, and `network-config` exist in boot partition
-- Check cloud-init logs: `sudo cat /var/log/cloud-init-output.log`
-- Errors like "No access points defined" = bad network-config format (use wpa_supplicant.conf instead)

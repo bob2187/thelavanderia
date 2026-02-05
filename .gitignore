@@ -1,2 +1,5 @@
 .DS_Store
 roles/companion/files/companion-linux-arm64.tar.gz
+
+# Ansible Vault password file (NEVER commit this)
+.vault_pass

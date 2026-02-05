@@ -6,6 +6,8 @@
   roles:
     - role: base
       tags: base
+    - role: desktop
+      tags: desktop
     - role: tailscale
       tags: tailscale
     - role: tailscale-autoroute
@@ -13,7 +15,8 @@
       when: tailscale_autoroute | default(false)
     - role: rpiconnect
       tags: rpiconnect
-    - role: companion
-      tags: companion
+    # - role: companion
+    #   tags: companion
+    #   # TODO: companion role is broken - fix installation
     - role: network-api
       tags: network-api

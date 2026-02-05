@@ -1,0 +1,102 @@
+---
+# Desktop customization role
+# Place host-specific wallpapers in files/ as: <hostname>_desktop.png (or .jpg)
+
+- name: Check for host-specific wallpaper (png)
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/{{ inventory_hostname }}_desktop.png"
+  register: wallpaper_png
+  become: no
+
+- name: Check for host-specific wallpaper (jpg)
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/{{ inventory_hostname }}_desktop.jpg"
+  register: wallpaper_jpg
+  become: no
+
+- name: Check for host-specific wallpaper (jpeg)
+  local_action:
+    module: stat
+    path: "{{ role_path }}/files/{{ inventory_hostname }}_desktop.jpeg"
+  register: wallpaper_jpeg
+  become: no
+
+- name: Set wallpaper filename (png)
+  set_fact:
+    wallpaper_file: "{{ inventory_hostname }}_desktop.png"
+  when: wallpaper_png.stat.exists
+
+- name: Set wallpaper filename (jpg)
+  set_fact:
+    wallpaper_file: "{{ inventory_hostname }}_desktop.jpg"
+  when: wallpaper_jpg.stat.exists and not wallpaper_png.stat.exists
+
+- name: Set wallpaper filename (jpeg)
+  set_fact:
+    wallpaper_file: "{{ inventory_hostname }}_desktop.jpeg"
+  when: wallpaper_jpeg.stat.exists and not wallpaper_png.stat.exists and not wallpaper_jpg.stat.exists
+
+- name: Create wallpapers directory
+  file:
+    path: "/home/{{ admin_user }}/Pictures/wallpapers"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0755'
+  when: wallpaper_file is defined
+
+- name: Copy wallpaper to Pi
+  copy:
+    src: "{{ wallpaper_file }}"
+    dest: "/home/{{ admin_user }}/Pictures/wallpapers/{{ wallpaper_file }}"
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0644'
+  when: wallpaper_file is defined
+
+- name: Ensure pcmanfm config directories exist
+  file:
+    path: "/home/{{ admin_user }}/.config/pcmanfm/{{ item }}"
+    state: directory
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0755'
+  loop:
+    - LXDE-pi
+    - default
+  when: wallpaper_file is defined
+
+- name: Set desktop wallpaper config
+  copy:
+    dest: "/home/{{ admin_user }}/.config/pcmanfm/{{ item.profile }}/{{ item.file }}"
+    content: |
+      [*]
+      wallpaper_mode=crop
+      wallpaper_common=1
+      wallpaper=/home/{{ admin_user }}/Pictures/wallpapers/{{ wallpaper_file }}
+      desktop_bg=#000000
+      desktop_fg=#ffffff
+      desktop_shadow=#000000
+      desktop_font=Nunito Sans Light 12
+      show_wm_menu=0
+      sort=mtime;ascending;
+      show_documents=0
+      show_trash=1
+      show_mounts=1
+      folder=/home/{{ admin_user }}/Desktop
+    owner: "{{ admin_user }}"
+    group: "{{ admin_user }}"
+    mode: '0644'
+  loop:
+    - { profile: 'LXDE-pi', file: 'desktop-items-0.conf' }
+    - { profile: 'LXDE-pi', file: 'desktop-items-HDMI-A-2.conf' }
+    - { profile: 'default', file: 'desktop-items-0.conf' }
+    - { profile: 'default', file: 'desktop-items-HDMI-A-2.conf' }
+  when: wallpaper_file is defined
+
+- name: No wallpaper found for host
+  debug:
+    msg: "No wallpaper found for {{ inventory_hostname }}. Add roles/desktop/files/{{ inventory_hostname }}_desktop.png"
+  when: wallpaper_file is not defined

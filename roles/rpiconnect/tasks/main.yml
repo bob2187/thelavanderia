@@ -6,14 +6,146 @@
     name: rpi-connect
     state: present
 
+# Check if lingering is already enabled
+- name: Check lingering status
+  shell: loginctl show-user {{ admin_user }} -p Linger 2>/dev/null | grep -q 'Linger=yes' && echo 'yes' || echo 'no'
+  register: linger_status
+  changed_when: false
+  failed_when: false
+
 - name: Enable lingering for user
-  command: loginctl enable-linger {{ ansible_user }}
+  command: loginctl enable-linger {{ admin_user }}
+  when: linger_status.stdout != 'yes'
+
+# Check if rpi-connect is running
+- name: Check rpi-connect status
+  shell: rpi-connect status 2>&1 || true
+  register: rpiconnect_status
+  changed_when: false
+  become: no
 
 - name: Enable rpi-connect
   command: rpi-connect on
   become: no
-  ignore_errors: yes
+  when: "'is not signed in' in rpiconnect_status.stdout or 'not running' in rpiconnect_status.stdout or rpiconnect_status.rc != 0"
+  failed_when: false
 
-- name: Reminder to authenticate
+# Check if signed in
+- name: Check if signed in
+  shell: rpi-connect status 2>&1 | grep -qi 'Signed in.*yes' && echo 'yes' || echo 'no'
+  register: rpiconnect_signed_in
+  changed_when: false
+  become: no
+
+# Interactive signin if not signed in
+# The signin command must stay running while user authenticates in browser
+- name: Start rpi-connect signin in background
+  shell: |
+    # Start signin in background, keep it running
+    nohup rpi-connect signin > /tmp/rpiconnect-signin.log 2>&1 &
+    echo $! > /tmp/rpiconnect-signin.pid
+    # Wait for URL to appear in output
+    for i in $(seq 1 15); do
+      if grep -q 'connect.raspberrypi.com' /tmp/rpiconnect-signin.log 2>/dev/null; then
+        grep -oE 'https://connect.raspberrypi.com/[^ ]+' /tmp/rpiconnect-signin.log
+        exit 0
+      fi
+      sleep 1
+    done
+    echo "URL not found"
+  register: rpiconnect_url
+  become: no
+  when: rpiconnect_signed_in.stdout != 'yes'
+  failed_when: false
+
+- name: Authenticate RPI Connect
+  pause:
+    prompt: |
+
+      ══════════════════════════════════════════════════════════════════
+                       RASPBERRY PI CONNECT AUTHENTICATION
+      ══════════════════════════════════════════════════════════════════
+
+      Open this URL to authenticate {{ inventory_hostname }}:
+
+      {{ rpiconnect_url.stdout }}
+
+      IMPORTANT: After clicking the link and signing in, wait until
+      you see the device appear as "Online" in the RPI Connect dashboard.
+
+      Press ENTER after the device shows Online
+      Type 'skip' + ENTER to skip RPI Connect auth
+  register: rpiconnect_auth_prompt
+  when:
+    - rpiconnect_signed_in.stdout != 'yes'
+    - rpiconnect_url.stdout | default('') is search('connect.raspberrypi.com')
+
+- name: Check if user skipped auth
+  set_fact:
+    rpiconnect_auth_skipped: "{{ rpiconnect_auth_prompt.user_input | default('') | lower == 'skip' }}"
+  when: rpiconnect_auth_prompt is defined
+
+# Wait for signin process to complete
+- name: Wait for signin to complete
+  shell: |
+    # Check if signin completed
+    for i in $(seq 1 30); do
+      if grep -q 'Signed in' /tmp/rpiconnect-signin.log 2>/dev/null; then
+        echo "success"
+        exit 0
+      fi
+      if rpi-connect status 2>&1 | grep -qi 'signed in.*yes'; then
+        echo "success"
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "timeout"
+  register: rpiconnect_signin_wait
+  become: no
+  when:
+    - rpiconnect_signed_in.stdout != 'yes'
+    - not rpiconnect_auth_skipped | default(false)
+    - rpiconnect_url.stdout | default('') is search('connect.raspberrypi.com')
+  failed_when: false
+
+- name: Kill any remaining signin process
+  shell: |
+    if [ -f /tmp/rpiconnect-signin.pid ]; then
+      kill $(cat /tmp/rpiconnect-signin.pid) 2>/dev/null || true
+      rm -f /tmp/rpiconnect-signin.pid
+    fi
+  become: no
+  changed_when: false
+  failed_when: false
+
+- name: Verify RPI Connect signed in
+  shell: rpi-connect status 2>&1 | grep -qi 'signed in.*yes' && echo 'yes' || echo 'no'
+  register: rpiconnect_verify
+  become: no
+  changed_when: false
+  when:
+    - rpiconnect_signed_in.stdout != 'yes'
+    - not rpiconnect_auth_skipped | default(false)
+
+- name: RPI Connect signin result
   debug:
-    msg: "RPI Connect installed. If not started, log into desktop and run 'rpi-connect on && rpi-connect signin'"
+    msg: "{{ 'RPI Connect signed in successfully' if rpiconnect_verify.stdout | default('no') == 'yes' else 'RPI Connect signin incomplete - may need manual signin' }}"
+  when:
+    - rpiconnect_signed_in.stdout != 'yes'
+    - not rpiconnect_auth_skipped | default(false)
+
+- name: RPI Connect auth skipped
+  debug:
+    msg: "RPI Connect authentication skipped. Run playbook again to authenticate later."
+  when: rpiconnect_auth_skipped | default(false)
+
+- name: Get final RPI Connect status
+  shell: rpi-connect status 2>&1 || true
+  register: rpiconnect_final_status
+  changed_when: false
+  become: no
+
+- name: Display RPI Connect status
+  debug:
+    msg: "{{ rpiconnect_final_status.stdout_lines }}"

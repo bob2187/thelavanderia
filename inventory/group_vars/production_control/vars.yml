@@ -2,6 +2,11 @@
 # Imaging defaults for all production control Pis
 # These can be overridden in host_vars/<hostname>.yml
 
+# Tailscale configuration
+# Set to false for Pis on local networks (prevents routing conflicts)
+# Set to true if this Pi needs to reach other subnets via Tailscale
+tailscale_accept_routes: false
+
 # Timezone and locale
 imaging_timezone: "America/Chicago"
 imaging_locale: "en_US.UTF-8"
@@ -13,7 +18,7 @@ imaging_ssh_pubkey_auth: true
 imaging_ssh_permit_root: false
 
 # Plain text password for cloud-init (used on first boot)
-imaging_plain_password: "bluesky"
+imaging_plain_password: "{{ vault_imaging_plain_password }}"
 
 # VNC configuration (built-in RealVNC)
 imaging_vnc_enabled: true

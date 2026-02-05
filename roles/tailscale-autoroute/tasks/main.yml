@@ -55,16 +55,17 @@
     mode: '0644'
     owner: root
     group: root
+  register: autoroute_service_file
 
 - name: Reload systemd daemon
   systemd:
     daemon_reload: yes
+  when: autoroute_service_file.changed
 
-- name: Enable and start tailscale-autoroute service
+- name: Enable tailscale-autoroute service
   systemd:
     name: tailscale-autoroute
     enabled: yes
-    state: started
 
 - name: Enable and start networkd-dispatcher
   systemd:
@@ -118,12 +119,17 @@
 
       [Install]
       WantedBy=multi-user.target
+  register: udp_gro_service_file
+
+- name: Reload systemd for UDP GRO service
+  systemd:
+    daemon_reload: yes
+  when: udp_gro_service_file.changed
 
 - name: Enable tailscale-udp-gro service
   systemd:
     name: tailscale-udp-gro
     enabled: yes
-    daemon_reload: yes
 
 - name: Run initial route detection
   command: /usr/local/bin/tailscale-autoroute.sh

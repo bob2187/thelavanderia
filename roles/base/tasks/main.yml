@@ -40,13 +40,37 @@
     create: yes
     mode: '0440'
 
-- name: Remove old users
+- name: Deploy SSH authorized keys
+  authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ admin_ssh_keys | default([]) }}"
+  when: admin_ssh_keys | default([]) | length > 0
+
+- name: Get list of human users (UID >= 1000)
+  shell: |
+    awk -F: '$3 >= 1000 && $3 < 65534 && $1 != "{{ admin_user }}" && $1 != "nobody" {print $1}' /etc/passwd
+  register: users_to_remove
+  changed_when: false
+  when: remove_old_users | default(true)
+
+- name: Show users to be removed
+  debug:
+    msg: "Users to remove: {{ users_to_remove.stdout_lines | default([]) }}"
+  when:
+    - remove_old_users | default(true)
+    - users_to_remove.stdout_lines | default([]) | length > 0
+
+- name: Remove non-admin users
   user:
     name: "{{ item }}"
     state: absent
     remove: yes
-  loop: "{{ remove_users | default(['pi']) }}"
-  when: remove_old_user | default(true)
+  loop: "{{ users_to_remove.stdout_lines | default([]) }}"
+  when:
+    - remove_old_users | default(true)
+    - users_to_remove.stdout_lines | default([]) | length > 0
 
 - name: Enable SSH service
   service:
@@ -54,11 +78,32 @@
     enabled: yes
     state: started
 
+- name: Check VNC status
+  command: raspi-config nonint get_vnc
+  register: vnc_status
+  changed_when: false
+  failed_when: false
+
 - name: Enable VNC via raspi-config
   command: raspi-config nonint do_vnc 0
+  when: vnc_status.stdout != '0'
+
+- name: Check boot behaviour
+  shell: |
+    boot_cli=$(raspi-config nonint get_boot_cli)
+    autologin=$(raspi-config nonint get_autologin)
+    # B4 = desktop (boot_cli=1) with autologin (autologin=0)
+    if [ "$boot_cli" = "1" ] && [ "$autologin" = "0" ]; then
+      echo "B4"
+    else
+      echo "other"
+    fi
+  register: boot_status
+  changed_when: false
 
 - name: Enable auto-login to desktop
   command: raspi-config nonint do_boot_behaviour B4
+  when: boot_status.stdout != 'B4'
 
 - name: Set auto-login user
   lineinfile:

@@ -4,10 +4,10 @@
 
 # WiFi configuration
 imaging_wifi_ssid: "FamiliaStephen5GHz.HMO"
-imaging_wifi_password: "robbieisgreat2335"
+imaging_wifi_password: "{{ vault_imaging_wifi_password }}"
 
 # VNC password (8 characters max for RealVNC)
-imaging_vnc_password: "bluesky"
+imaging_vnc_password: "{{ vault_imaging_vnc_password }}"
 
 # Any skinnypete-specific packages
 # imaging_extra_packages:
