@@ -311,3 +311,19 @@ ssh root@192.168.8.1 "opkg update && opkg install python3 python3-urllib"
 ### Monitoring
 - [ ] Set up alerts for SSH logins
 - [ ] Monitor Unity Intercom service health
+
+## Future Ideas
+
+### Open Source Intercom Alternative
+Explore building a custom intercom solution based on open source projects:
+- **Mumble** (BSD license) - Low-latency (~30-50ms), self-hostable, mobile apps exist
+- **LiveKit** (Apache 2.0) - Modern, good SDKs, ~50-100ms latency
+- **Jitsi** (Apache 2.0) - WebRTC-based, easier to embed
+
+Benefits:
+- Integrate Tailscale directly (no public port exposure)
+- Brand as ShowDropGo Intercom
+- Full control over features and security
+- Legal: BSD/Apache allow commercial use, modification, distribution
+
+See also: Wrapper app approach to add VPN tunnel to existing Unity client without reverse engineering.
