@@ -292,3 +292,22 @@ Python isn't installed:
 ```bash
 ssh root@192.168.8.1 "opkg update && opkg install python3 python3-urllib"
 ```
+
+## Security To-Do
+
+### Vultr VM (vultr-unity-relay)
+- [ ] Enable `unattended-upgrades` for automatic security patches
+- [ ] Install `fail2ban` for SSH brute force protection
+- [ ] Add iptables rate limiting on port 20101 (prevent DDoS/brute force)
+  ```bash
+  iptables -A INPUT -p tcp --dport 20101 -m connlimit --connlimit-above 20 -j DROP
+  ```
+
+### Tailscale
+- [ ] Configure ACLs to restrict device-to-device access
+- [ ] Use tags to group devices by role (admin, relay, endpoint)
+- [ ] Review device key expiry settings
+
+### Monitoring
+- [ ] Set up alerts for SSH logins
+- [ ] Monitor Unity Intercom service health
