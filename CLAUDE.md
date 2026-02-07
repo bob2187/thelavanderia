@@ -1,7 +1,80 @@
 # Project Reference for Claude
 
 ## Overview
-Ansible playbooks for Raspberry Pi and OpenWRT network infrastructure deployments.
+Ansible playbooks for Raspberry Pi, OpenWRT, and cloud VM network infrastructure deployments. All devices are connected via Tailscale VPN.
+
+## Project Structure
+```
+thelavanderia/
+├── ansible.cfg                         # Ansible config (roles path, inventory, vault)
+├── CLAUDE.md                           # This file
+├── README.md                           # Brief project overview
+├── .gitignore                          # Ignores: .DS_Store, companion binary, .vault_pass
+├── playbooks/
+│   ├── production-control.yml          # Raspberry Pi full setup
+│   ├── imaging.yml                     # Pi image customization (runs on localhost)
+│   ├── openwrt.yml                     # OpenWRT router setup
+│   └── vultr.yml                       # Cloud VM setup
+├── roles/
+│   ├── base/                           # Pi base OS setup
+│   ├── base-cloud/                     # Cloud VM SSH hardening
+│   ├── companion/                      # Bitfocus Companion (currently broken)
+│   ├── desktop/                        # Desktop wallpaper customization
+│   ├── network-api/                    # Flask REST API for network config
+│   ├── pi-image/                       # Cloud-init image injection
+│   ├── rpiconnect/                     # Raspberry Pi Connect
+│   ├── tailscale/                      # Tailscale VPN installation
+│   ├── tailscale-autoroute/            # Auto subnet route advertising
+│   ├── tailscale-openwrt/              # Tailscale updates for OpenWRT
+│   └── unity-relay/                    # Unity Intercom port forwarding
+├── inventory/
+│   ├── hosts.yml                       # Host definitions (3 groups)
+│   ├── group_vars/
+│   │   ├── all/
+│   │   │   ├── vars.yml                # Global variables
+│   │   │   └── vault.yml              # ENCRYPTED
+│   │   ├── production_control/
+│   │   │   ├── vars.yml                # Imaging + Tailscale defaults
+│   │   │   └── vault.yml              # ENCRYPTED
+│   │   ├── cloud_vms/
+│   │   │   ├── vars.yml                # Cloud VM Tailscale settings
+│   │   │   └── vault.yml              # ENCRYPTED
+│   │   └── openwrt_routers.yml         # Shell type, Python path
+│   └── host_vars/
+│       ├── skinnypete.yml              # WiFi/VNC config
+│       └── skinnypete_vault.yml       # ENCRYPTED
+├── companion-module-network-api/       # Companion module source (TypeScript)
+│   ├── src/                            # index.ts, minimal.ts
+│   ├── companion/                      # manifest.json
+│   └── package.json                    # Node 22, nodejs-ipc
+├── docs/
+│   └── companion-setup.md             # Companion button grid setup guide
+└── images/                             # Pi OS images (not in repo)
+```
+
+## AI Assistant Guidelines
+
+### Safety Rules
+- **NEVER** decrypt, display, or modify vault files (*.vault.yml, *_vault.yml). These contain passwords, WiFi credentials, and auth keys.
+- **NEVER** commit `.vault_pass` or any file containing plaintext secrets.
+- **NEVER** modify `ansible.cfg` vault_password_file path without explicit request.
+- When editing roles, be aware that `network-api` protects `wlan0`, `tailscale0`, and `lo` interfaces — only `eth0` can be modified via the API.
+
+### Conventions
+- All Raspberry Pi hosts use `heisenberg` as the admin user.
+- Vault-encrypted variables are prefixed with `vault_` and referenced via Jinja2 (e.g., `"{{ vault_admin_password_hash }}"`).
+- Public variables go in `vars.yml`, secrets go in `vault.yml` within the same directory.
+- Tags on roles match role names (e.g., `--skip-tags network-api` skips that role).
+- Tailscale IPs (100.x.x.x) are the default `ansible_host` for remote management.
+- Roles that require interactive browser auth (tailscale, rpiconnect) display a URL and wait.
+- The `tailscale-autoroute` role is conditional: only runs when `tailscale_autoroute: true` is set on the host.
+
+### Working with This Repo
+- Run `ansible-playbook` with `--limit <host>` to target specific hosts.
+- Use `-e "variable=value"` to override variables at runtime.
+- Use `--skip-tags <tag>` to skip specific roles in a playbook.
+- Use `--check` for dry-run mode.
+- Test YAML syntax before committing: ensure proper indentation (2 spaces) and valid Jinja2 references.
 
 ## Ansible Installation
 Ansible is installed via pip in the user's Python directory:
@@ -29,6 +102,9 @@ inventory/
 │   ├── production_control/
 │   │   ├── vars.yml      # Imaging defaults, tailscale_accept_routes
 │   │   └── vault.yml     # Encrypted: vault_imaging_plain_password
+│   ├── cloud_vms/
+│   │   ├── vars.yml      # Cloud VM defaults
+│   │   └── vault.yml     # Encrypted: vault_tailscale_auth_key
 │   └── openwrt_routers.yml
 └── host_vars/
     ├── skinnypete.yml           # References vault variables
@@ -46,8 +122,8 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 ## Hosts
 
 ### Raspberry Pis (production_control group)
-- **skinnypete**: 100.105.164.64 (Tailscale), 192.168.25.172 (WiFi), user: heisenberg
-- **hank**: 100.79.51.33 (Tailscale), user: heisenberg
+- **skinnypete**: 100.105.164.64 (Tailscale), 192.168.25.172 (WiFi), user: heisenberg, tailscale_autoroute: true
+- **hank**: 100.79.51.33 (Tailscale), user: heisenberg, tailscale_autoroute: true
 
 ### OpenWRT Routers (openwrt_routers group)
 - **winnebago**: GL-BE3600 router
@@ -75,12 +151,12 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 
 ## Playbooks
 
-| Playbook | Target | Purpose |
-|----------|--------|---------|
-| `imaging.yml` | localhost | Create customized Pi image from virgin base |
-| `production-control.yml` | Raspberry Pis | Full setup: base, tailscale, rpiconnect, network-api |
-| `openwrt.yml` | OpenWRT routers | Python bootstrap + Tailscale updates |
-| `vultr.yml` | Vultr VM | Tailscale + Unity Intercom port forwarding |
+| Playbook | Target | Roles | Purpose |
+|----------|--------|-------|---------|
+| `production-control.yml` | Raspberry Pis | base, desktop, tailscale, tailscale-autoroute*, rpiconnect, network-api | Full Pi setup (*autoroute only when enabled per host) |
+| `imaging.yml` | localhost | pi-image | Create customized Pi image from virgin base |
+| `openwrt.yml` | OpenWRT routers | (raw bootstrap) + tailscale-openwrt | Python bootstrap + Tailscale updates |
+| `vultr.yml` | Vultr VM | base-cloud, tailscale, unity-relay | SSH hardening + Tailscale + Unity Intercom forwarding |
 
 ### Running Playbooks
 
@@ -116,49 +192,79 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 ## Roles
 
 ### base
-- Sets hostname
+- Sets hostname and updates /etc/hosts
+- Refreshes NodeSource GPG key
 - Updates apt and upgrades packages
 - Creates admin user (heisenberg) with passwordless sudo
 - Auto-detects and removes non-admin users (UID >= 1000)
 - Deploys SSH authorized keys
-- Enables SSH, VNC, and auto-login to desktop
+- Enables SSH, VNC, and auto-login to desktop via lightdm
+
+### desktop
+- Deploys host-specific wallpaper images
+- Looks for `roles/desktop/files/<hostname>_desktop.{png,jpg,jpeg}`
+- Configures PCManFM wallpaper for LXDE-pi desktop
+- Places wallpaper in `~/Pictures/wallpapers/`
 
 ### tailscale
-- Installs Tailscale VPN
+- Installs Tailscale VPN from official install script
 - **Interactive authentication**: Displays login URL, waits for user to authenticate
-- Auto-detects if offline and re-authenticates
+- Auto-detects login state and online status; re-authenticates if offline
 - Supports `tailscale_force_reauth=true` to force re-authentication
 - Supports `tailscale_auth_key` for automated auth (store in vault)
+- Configurable `tailscale_accept_routes` (default: false)
 
 ### tailscale-autoroute
-- Automatically advertises local subnets
+- Automatically detects local subnets and advertises them via Tailscale
 - Enables exit node capability
-- Configures IP forwarding
+- Configures IP forwarding (IPv4/IPv6) and UDP GRO
+- Installs systemd service for boot-time route updates
+- Hooks into networkd-dispatcher and NetworkManager for network change events
+- Tracks state in `/var/lib/tailscale-autoroute/last-routes`
+- Only runs when `tailscale_autoroute: true` is set on the host
 
 **Important**: `tailscale_accept_routes: false` (default for production_control) prevents routing conflicts when the Pi is on a local network. Set to `true` in host_vars if the Pi needs to reach other Tailscale subnets.
 
 ### rpiconnect
 - Installs Raspberry Pi Connect
 - **Interactive authentication**: Displays login URL, waits for user to authenticate
+- Enables user lingering for persistent session
+- Background signin with URL extraction and online verification
 - Supports `skip` to skip authentication
 
 ### companion (currently broken)
 - Bitfocus Companion (GUI build)
+- Commented out in production-control.yml
+- Installs from pre-built tar.gz binary
+- Creates autostart desktop entry, accessible at `http://<hostname>:8000`
 
 ### network-api
-- Flask REST API for network configuration
-- Companion module for button control
+- Flask REST API (`network-api.py`) for NetworkManager-based network configuration
+- Endpoints: `/status`, `/display`, `/mode/<mode>`, `/ip/{0-3}/up|down`, `/preset/<name>`, `/apply`, `/recovery`, `/state/*`
+- Modes: DHCP, Static, Server, Link-Local
+- Only eth0 is modifiable; wlan0, tailscale0, and lo are protected
+- Tracks pending vs applied configuration state
+- Includes Companion module (`roles/network-api/files/network-api-module/`) for button control
+- See `docs/companion-setup.md` for the 8x4 button grid layout guide
 
 ### pi-image
-- Writes cloud-init config to Pi images for imaging.yml playbook
+- Writes cloud-init config (user-data, network-config) to Pi images
+- Mounts images locally (macOS: hdiutil, Linux: losetup)
+- Configures hostname, user, SSH, VNC, WiFi for first boot
+- Disables cloud-init after first boot
+- Templates: `user-data.j2`, `user-data-minimal.j2`, `network-config.j2`
 
 ### tailscale-openwrt
 - Updates Tailscale on GL.iNET routers from official ARM64 static builds
+- Checks current version against latest release via Tailscale API
+- Downloads and replaces binaries at `/usr/sbin/tailscale{,d}`
+- Handles service restart
 
 ### base-cloud
 - Base setup for cloud VMs (Vultr, etc.)
+- Sets hostname and updates /etc/hosts
 - Deploys SSH authorized keys from `admin_ssh_keys`
-- Hardens SSH: disables password auth, permits root login via key only
+- Hardens SSH: disables password auth, disables empty passwords
 - Variables:
   - `ssh_password_auth`: Enable/disable password auth (default: false)
   - `ssh_permit_root_login`: Root login policy (default: prohibit-password)
@@ -166,8 +272,10 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 
 ### unity-relay
 - Configures iptables NAT rules for port forwarding via Tailscale
-- Forwards Unity Intercom traffic from public IP to Mac Mini
+- Forwards Unity Intercom traffic (TCP + UDP) from public IP to Mac Mini
 - Client connects to: `unity.showdropgo.io:20101`
+- Installs iptables-persistent for rule persistence
+- Enables IP forwarding via sysctl
 - Variables:
   - `unity_relay_target_ip`: Tailscale IP of destination (default: 100.109.197.33)
   - `unity_relay_ports`: List of ports to forward (default: [20101])
@@ -181,6 +289,8 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `admin_password_hash` | Password hash (from vault) |
 | `admin_ssh_keys` | SSH public keys to deploy |
 | `remove_old_users` | Auto-remove non-admin users (default: true) |
+| `companion_version` | Bitfocus Companion version (v4.2.2) |
+| `tailscale_auth_key` | Tailscale auth key, pass via `-e` or vault (default: empty) |
 
 ### Tailscale Variables (group_vars/production_control/vars.yml)
 | Variable | Default | Purpose |
@@ -194,9 +304,18 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 |----------|---------|---------|
 | `imaging_timezone` | America/Chicago | Timezone |
 | `imaging_locale` | en_US.UTF-8 | Locale |
+| `imaging_keyboard_layout` | us | Keyboard layout |
 | `imaging_ssh_password_auth` | true | Allow SSH password login |
+| `imaging_ssh_pubkey_auth` | true | Allow SSH pubkey login |
+| `imaging_ssh_permit_root` | false | Allow root SSH login |
+| `imaging_plain_password` | (from vault) | Plain text password for cloud-init first boot |
 | `imaging_vnc_enabled` | true | Enable VNC |
+| `imaging_vnc_password` | "" | VNC password (set per-host) |
 | `imaging_wifi_country` | US | WiFi regulatory domain |
+| `imaging_wifi_ssid` | "" | WiFi SSID (set per-host) |
+| `imaging_wifi_password` | "" | WiFi password (set per-host) |
+| `imaging_extra_packages` | [] | Additional packages to install on first boot |
+| `imaging_runcmd` | [] | Commands to run on first boot |
 
 ### Host-specific (host_vars/<hostname>.yml)
 | Variable | Purpose |
@@ -205,6 +324,7 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `imaging_wifi_password` | WiFi password (from vault) |
 | `imaging_vnc_password` | VNC password (from vault) |
 | `local_ip` | Local network IP (for override) |
+| `tailscale_autoroute` | Enable auto subnet route advertising (default: false) |
 
 ## OpenWRT/GL.iNET Notes
 
