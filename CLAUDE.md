@@ -42,14 +42,18 @@ thelavanderia/
 │   │   └── openwrt_routers/
 │   │       └── vars.yml                # Shell type, Python path, password ref
 │   └── host_vars/
-│       ├── skinnypete.yml              # WiFi/VNC config
-│       ├── skinnypete_vault.yml       # ENCRYPTED
-│       ├── winnebago.yml              # Router model/arch (GL-BE3600)
-│       ├── winnebago_vault.yml        # ENCRYPTED
-│       ├── gl-ax1800.yml              # Router model/arch (GL-AX1800)
-│       ├── gl-ax1800_vault.yml        # ENCRYPTED
-│       ├── gl-ax1800-ap1.yml          # Router model/arch (GL-AX1800)
-│       └── gl-ax1800-ap1_vault.yml    # ENCRYPTED
+│       ├── skinnypete/
+│       │   ├── vars.yml                # WiFi/VNC config
+│       │   └── vault.yml             # ENCRYPTED
+│       ├── winnebago/
+│       │   ├── vars.yml                # Router model/arch (GL-BE3600)
+│       │   └── vault.yml             # ENCRYPTED
+│       ├── gl-ax1800/
+│       │   ├── vars.yml                # Router model/arch (GL-AX1800)
+│       │   └── vault.yml             # ENCRYPTED
+│       └── gl-ax1800-ap1/
+│           ├── vars.yml                # Router model/arch (GL-AX1800), tailscale_managed: false
+│           └── vault.yml             # ENCRYPTED
 ├── companion-module-network-api/       # Companion module source (TypeScript)
 │   ├── src/                            # index.ts, minimal.ts
 │   ├── companion/                      # manifest.json
@@ -115,14 +119,18 @@ inventory/
 │   └── openwrt_routers/
 │       └── vars.yml      # Shell type, Python path, password ref
 └── host_vars/
-    ├── skinnypete.yml           # References vault variables
-    ├── skinnypete_vault.yml     # Encrypted: WiFi/VNC passwords
-    ├── winnebago.yml            # Router model/arch metadata
-    ├── winnebago_vault.yml      # Encrypted: vault_openwrt_root_password
-    ├── gl-ax1800.yml            # Router model/arch metadata
-    ├── gl-ax1800_vault.yml      # Encrypted: vault_openwrt_root_password
-    ├── gl-ax1800-ap1.yml        # Router model/arch metadata
-    └── gl-ax1800-ap1_vault.yml  # Encrypted: vault_openwrt_root_password
+    ├── skinnypete/
+    │   ├── vars.yml             # WiFi/VNC config references
+    │   └── vault.yml            # Encrypted: WiFi/VNC passwords
+    ├── winnebago/
+    │   ├── vars.yml             # Router model/arch metadata
+    │   └── vault.yml            # Encrypted: vault_openwrt_root_password
+    ├── gl-ax1800/
+    │   ├── vars.yml             # Router model/arch metadata
+    │   └── vault.yml            # Encrypted: vault_openwrt_root_password
+    └── gl-ax1800-ap1/
+        ├── vars.yml             # Router model/arch, tailscale_managed: false
+        └── vault.yml            # Encrypted: vault_openwrt_root_password
 ```
 
 ### Vault Password
@@ -151,7 +159,7 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
   - User: root
 - **gl-ax1800-ap1**: GL-AX1800 AP in bridge mode, location: HMO
   - LAN IP: 192.168.25.167
-  - No Tailscale
+  - No Tailscale (`tailscale_managed: false`)
   - User: root
 
 ### Cloud VMs (cloud_vms group)
@@ -339,7 +347,7 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `imaging_extra_packages` | [] | Additional packages to install on first boot |
 | `imaging_runcmd` | [] | Commands to run on first boot |
 
-### Host-specific (host_vars/<hostname>.yml)
+### Host-specific (host_vars/<hostname>/vars.yml)
 | Variable | Purpose |
 |----------|---------|
 | `imaging_wifi_ssid` | WiFi network name |
@@ -348,17 +356,20 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `local_ip` | Local network IP (for override) |
 | `tailscale_autoroute` | Enable auto subnet route advertising (default: false) |
 
-### OpenWRT Router Variables (host_vars/<router>.yml)
+### OpenWRT Router Variables (host_vars/<router>/vars.yml)
 | Variable | Purpose |
 |----------|---------|
 | `router_model` | Hardware model (e.g., GL-BE3600, GL-AX1800) |
 | `router_brand` | Manufacturer (GL.iNET) |
 | `router_arch` | CPU architecture (aarch64) |
+| `tailscale_managed` | Set to false on APs without Tailscale (overrides group default) |
 
 ### OpenWRT Group Variables (group_vars/openwrt_routers/vars.yml)
 | Variable | Purpose |
 |----------|---------|
 | `openwrt_root_password` | Root password (from per-host vault) |
+| `ansible_password` | SSH auth password (from per-host vault, enables passwordless deploys) |
+| `tailscale_managed` | Whether to manage Tailscale on this host (default: true) |
 | `ansible_shell_type` | Shell type (sh for ash) |
 | `ansible_python_interpreter` | Python path (/usr/bin/python3) |
 
