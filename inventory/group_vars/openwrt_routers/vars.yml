@@ -7,6 +7,9 @@ ansible_shell_type: sh
 # Python path on OpenWRT (if installed via opkg)
 ansible_python_interpreter: /usr/bin/python3
 
+# Use tmpfs for Ansible temp files (overlay has limited space)
+ansible_remote_tmp: /tmp/.ansible/tmp
+
 # Root password from per-host vault — used for SSH authentication
 openwrt_root_password: "{{ vault_openwrt_root_password }}"
 ansible_password: "{{ vault_openwrt_root_password }}"

@@ -1,7 +1,11 @@
 ---
 # Tailscale update role for OpenWRT/GL.iNET routers
-# Downloads latest Tailscale from official static builds
+# Downloads latest Tailscale on localhost, pushes binaries to router
 # Skipped when tailscale_managed is false (e.g., bridge-mode APs)
+#
+# IMPORTANT: If connecting via Tailscale IP, we must push binaries
+# before stopping Tailscale, then do a quick stop+start to avoid
+# losing our SSH connection mid-update.
 
 - name: Skip Tailscale update (not managed)
   debug:
@@ -41,30 +45,57 @@
       set_fact:
         update_needed: "{{ current_version.stdout_lines[0] | default('0') != latest_version }}"
 
-    - name: Download latest Tailscale
+    - name: Download latest Tailscale on localhost
       get_url:
         url: "https://pkgs.tailscale.com/stable/tailscale_{{ latest_version }}_arm64.tgz"
-        dest: /tmp/tailscale_latest.tgz
+        dest: "/tmp/tailscale_{{ latest_version }}_arm64.tgz"
         mode: '0644'
+      delegate_to: localhost
+      become: no
+      run_once: true
       when: update_needed
 
-    - name: Stop Tailscale service
-      command: /etc/init.d/tailscale stop
-      when: update_needed
-      failed_when: false
-
-    - name: Extract and install Tailscale
+    - name: Extract Tailscale on localhost
       shell: |
         cd /tmp
-        tar -xzf tailscale_latest.tgz
-        cp tailscale_{{ latest_version }}_arm64/tailscale /usr/sbin/tailscale
-        cp tailscale_{{ latest_version }}_arm64/tailscaled /usr/sbin/tailscaled
-        chmod 755 /usr/sbin/tailscale /usr/sbin/tailscaled
-        rm -rf tailscale_latest.tgz tailscale_{{ latest_version }}_arm64
+        tar -xzf tailscale_{{ latest_version }}_arm64.tgz
+      delegate_to: localhost
+      become: no
+      run_once: true
       when: update_needed
 
-    - name: Start Tailscale service
-      command: /etc/init.d/tailscale start
+    - name: Stage tailscale binary to /tmp on router
+      copy:
+        src: "/tmp/tailscale_{{ latest_version }}_arm64/tailscale"
+        dest: /tmp/tailscale_new
+        mode: '0755'
+      when: update_needed
+
+    - name: Stage tailscaled binary to /tmp on router
+      copy:
+        src: "/tmp/tailscale_{{ latest_version }}_arm64/tailscaled"
+        dest: /tmp/tailscaled_new
+        mode: '0755'
+      when: update_needed
+
+    - name: Stop Tailscale, swap binaries, and restart
+      raw: |
+        /etc/init.d/tailscale stop 2>/dev/null
+        mv /tmp/tailscale_new /usr/sbin/tailscale
+        mv /tmp/tailscaled_new /usr/sbin/tailscaled
+        /etc/init.d/tailscale start
+      when: update_needed
+
+    - name: Clean up localhost download
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/tailscale_{{ latest_version }}_arm64.tgz"
+        - "/tmp/tailscale_{{ latest_version }}_arm64"
+      delegate_to: localhost
+      become: no
+      run_once: true
       when: update_needed
 
     - name: Update summary
