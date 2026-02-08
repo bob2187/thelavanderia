@@ -150,7 +150,7 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 ### OpenWRT Routers (openwrt_routers group)
 - **winnebago**: GL-BE3600 router, location: Travel
   - LAN IP: 192.168.8.1 (preferred for Tailscale updates)
-  - Tailscale IP: 100.71.25.22
+  - Tailscale IP: 100.93.112.62
   - User: root
   - SSH key is installed in `/etc/dropbear/authorized_keys`
 - **gl-ax1800**: GL-AX1800 router, location: HMO
