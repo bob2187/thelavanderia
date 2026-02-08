@@ -1,0 +1,7 @@
+---
+# Winnebago - GL-BE3600 (GL.iNET Slate Plus)
+# Location: Travel
+
+router_model: "GL-BE3600"
+router_brand: "GL.iNET"
+router_arch: "aarch64"

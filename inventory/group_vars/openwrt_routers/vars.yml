@@ -6,3 +6,6 @@ ansible_shell_type: sh
 
 # Python path on OpenWRT (if installed via opkg)
 ansible_python_interpreter: /usr/bin/python3
+
+# Root password reference (actual password in per-host vault files)
+openwrt_root_password: "{{ vault_openwrt_root_password }}"

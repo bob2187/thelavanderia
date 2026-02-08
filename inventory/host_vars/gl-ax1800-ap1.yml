@@ -1,0 +1,7 @@
+---
+# GL-AX1800-AP1 (GL.iNET Flint) - Access Point (bridge mode)
+# Location: HMO
+
+router_model: "GL-AX1800"
+router_brand: "GL.iNET"
+router_arch: "aarch64"
