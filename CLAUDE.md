@@ -126,11 +126,19 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 - **hank**: 100.79.51.33 (Tailscale), user: heisenberg, tailscale_autoroute: true
 
 ### OpenWRT Routers (openwrt_routers group)
-- **winnebago**: GL-BE3600 router
+- **winnebago**: GL-BE3600 router, location: Travel
   - LAN IP: 192.168.8.1 (preferred for Tailscale updates)
   - Tailscale IP: 100.71.25.22
   - User: root
   - SSH key is installed in `/etc/dropbear/authorized_keys`
+- **gl-ax1800**: GL-AX1800 router, location: HMO
+  - LAN IP: 192.168.25.1
+  - Tailscale IP: 100.121.163.68
+  - User: root
+- **gl-ax1800-ap1**: GL-AX1800 AP in bridge mode, location: HMO
+  - LAN IP: 192.168.25.167
+  - No Tailscale
+  - User: root
 
 ### Cloud VMs (cloud_vms group)
 - **vultr**: Debian 12 VM on Vultr
