@@ -13,7 +13,7 @@ admin_ssh_keys:
 # Set to false to disable: remove_old_users: false
 remove_old_users: true
 
-companion_version: "v4.2.2"
+companion_version: "v4.2.4"
 
 # Tailscale auth key (reusable)
 # Generate at: https://login.tailscale.com/admin/settings/keys
