@@ -39,10 +39,17 @@ thelavanderia/
 │   │   ├── cloud_vms/
 │   │   │   ├── vars.yml                # Cloud VM Tailscale settings
 │   │   │   └── vault.yml              # ENCRYPTED
-│   │   └── openwrt_routers.yml         # Shell type, Python path
+│   │   └── openwrt_routers/
+│   │       └── vars.yml                # Shell type, Python path, password ref
 │   └── host_vars/
 │       ├── skinnypete.yml              # WiFi/VNC config
-│       └── skinnypete_vault.yml       # ENCRYPTED
+│       ├── skinnypete_vault.yml       # ENCRYPTED
+│       ├── winnebago.yml              # Router model/arch (GL-BE3600)
+│       ├── winnebago_vault.yml        # ENCRYPTED
+│       ├── gl-ax1800.yml              # Router model/arch (GL-AX1800)
+│       ├── gl-ax1800_vault.yml        # ENCRYPTED
+│       ├── gl-ax1800-ap1.yml          # Router model/arch (GL-AX1800)
+│       └── gl-ax1800-ap1_vault.yml    # ENCRYPTED
 ├── companion-module-network-api/       # Companion module source (TypeScript)
 │   ├── src/                            # index.ts, minimal.ts
 │   ├── companion/                      # manifest.json
@@ -105,10 +112,17 @@ inventory/
 │   ├── cloud_vms/
 │   │   ├── vars.yml      # Cloud VM defaults
 │   │   └── vault.yml     # Encrypted: vault_tailscale_auth_key
-│   └── openwrt_routers.yml
+│   └── openwrt_routers/
+│       └── vars.yml      # Shell type, Python path, password ref
 └── host_vars/
     ├── skinnypete.yml           # References vault variables
-    └── skinnypete_vault.yml     # Encrypted: WiFi/VNC passwords
+    ├── skinnypete_vault.yml     # Encrypted: WiFi/VNC passwords
+    ├── winnebago.yml            # Router model/arch metadata
+    ├── winnebago_vault.yml      # Encrypted: vault_openwrt_root_password
+    ├── gl-ax1800.yml            # Router model/arch metadata
+    ├── gl-ax1800_vault.yml      # Encrypted: vault_openwrt_root_password
+    ├── gl-ax1800-ap1.yml        # Router model/arch metadata
+    └── gl-ax1800-ap1_vault.yml  # Encrypted: vault_openwrt_root_password
 ```
 
 ### Vault Password
@@ -333,6 +347,20 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `imaging_vnc_password` | VNC password (from vault) |
 | `local_ip` | Local network IP (for override) |
 | `tailscale_autoroute` | Enable auto subnet route advertising (default: false) |
+
+### OpenWRT Router Variables (host_vars/<router>.yml)
+| Variable | Purpose |
+|----------|---------|
+| `router_model` | Hardware model (e.g., GL-BE3600, GL-AX1800) |
+| `router_brand` | Manufacturer (GL.iNET) |
+| `router_arch` | CPU architecture (aarch64) |
+
+### OpenWRT Group Variables (group_vars/openwrt_routers/vars.yml)
+| Variable | Purpose |
+|----------|---------|
+| `openwrt_root_password` | Root password (from per-host vault) |
+| `ansible_shell_type` | Shell type (sh for ash) |
+| `ansible_python_interpreter` | Python path (/usr/bin/python3) |
 
 ## OpenWRT/GL.iNET Notes
 
