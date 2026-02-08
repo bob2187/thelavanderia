@@ -1,0 +1,7 @@
+---
+# GL-MT6000 (GL.iNET Flint 2) - Primary Router
+# Location: Chicago
+
+router_model: "GL-MT6000"
+router_brand: "GL.iNET"
+router_arch: "aarch64"
