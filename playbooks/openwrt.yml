@@ -13,4 +13,7 @@
       setup:
 
   roles:
-    - tailscale-openwrt
+    - role: base-openwrt
+      tags: base-openwrt
+    - role: tailscale-openwrt
+      tags: tailscale-openwrt

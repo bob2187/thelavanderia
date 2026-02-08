@@ -1,0 +1,26 @@
+---
+# Base role for OpenWRT routers: hostname and SSH key deployment
+
+- name: Get current hostname
+  raw: uci get system.@system[0].hostname
+  register: current_hostname
+  changed_when: false
+
+- name: Set hostname
+  raw: uci set system.@system[0].hostname='{{ inventory_hostname }}' && uci commit system && /etc/init.d/system reload
+  when: current_hostname.stdout | trim != inventory_hostname
+
+- name: Display hostname status
+  debug:
+    msg: "{{ 'Hostname changed from ' + current_hostname.stdout | trim + ' to ' + inventory_hostname if current_hostname.stdout | trim != inventory_hostname else 'Hostname already set to ' + inventory_hostname }}"
+
+- name: Deploy SSH authorized keys to dropbear
+  raw: |
+    mkdir -p /etc/dropbear
+    cat > /etc/dropbear/authorized_keys << 'KEYS'
+    {% for key in admin_ssh_keys %}
+    {{ key }}
+    {% endfor %}
+    KEYS
+    chmod 600 /etc/dropbear/authorized_keys
+  when: admin_ssh_keys | default([]) | length > 0
