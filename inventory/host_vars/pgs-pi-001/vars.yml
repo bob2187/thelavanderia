@@ -1,0 +1,5 @@
+---
+# PGS-Pi-001 - Remote node at Chicago-PGS
+# User: admin (not heisenberg - do not run base role)
+
+ansible_password: "{{ vault_pgs_admin_password }}"
