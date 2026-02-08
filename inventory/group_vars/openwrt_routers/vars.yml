@@ -9,3 +9,6 @@ ansible_python_interpreter: /usr/bin/python3
 
 # Root password reference (actual password in per-host vault files)
 openwrt_root_password: "{{ vault_openwrt_root_password }}"
+
+# Tailscale managed (set to false on APs/bridge-mode routers)
+tailscale_managed: true
