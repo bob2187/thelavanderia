@@ -15,8 +15,7 @@
       when: tailscale_autoroute | default(false)
     - role: rpiconnect
       tags: rpiconnect
-    # - role: companion
-    #   tags: companion
-    #   # TODO: companion role is broken - fix installation
+    - role: companion
+      tags: companion
     - role: network-api
       tags: network-api

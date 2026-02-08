@@ -18,17 +18,24 @@
       - libasound2
     state: present
 
+- name: Check if Companion is already installed
+  stat:
+    path: /home/{{ admin_user }}/Desktop/companion/companion-launcher
+  register: companion_installed
+
 - name: Create companion directory
   file:
     path: /home/{{ admin_user }}/Desktop/companion
     state: directory
     mode: '0755'
+  when: not companion_installed.stat.exists
 
 - name: Copy Companion archive
   copy:
     src: "companion-linux-arm64.tar.gz"
     dest: /tmp/companion.tar.gz
     mode: '0644'
+  when: not companion_installed.stat.exists
 
 - name: Extract Companion
   unarchive:
@@ -36,6 +43,12 @@
     dest: /home/{{ admin_user }}/Desktop/companion
     remote_src: yes
     extra_opts: [--strip-components=1]
+  when: not companion_installed.stat.exists
+
+- name: Clean up archive
+  file:
+    path: /tmp/companion.tar.gz
+    state: absent
 
 - name: Set Companion ownership
   file:
@@ -44,6 +57,14 @@
     group: "{{ admin_user }}"
     recurse: yes
 
+- name: Install udev rules for USB devices
+  copy:
+    src: /home/{{ admin_user }}/Desktop/companion/50-companion-desktop.rules
+    dest: /etc/udev/rules.d/50-companion.rules
+    remote_src: yes
+    mode: '0644'
+  notify: reload udev
+
 - name: Create autostart directory
   file:
     path: "/home/{{ admin_user }}/.config/autostart"
@@ -51,14 +72,6 @@
     owner: "{{ admin_user }}"
     group: "{{ admin_user }}"
     mode: '0755'
-
-- name: Find Companion executable
-  find:
-    paths: /home/{{ admin_user }}/Desktop/companion
-    patterns: "companion*"
-    file_type: file
-    recurse: no
-  register: companion_exe
 
 - name: Create Companion autostart entry
   copy:
