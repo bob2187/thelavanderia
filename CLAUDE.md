@@ -287,8 +287,10 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 ### tailscale-openwrt
 - Updates Tailscale on GL.iNET routers from official ARM64 static builds
 - Checks current version against latest release via Tailscale API
-- Downloads and replaces binaries at `/usr/sbin/tailscale{,d}`
-- Handles service restart
+- Downloads tarball on **localhost** (not the router) to avoid overlay space issues
+- Stages binaries to `/tmp` (tmpfs) on the router, then does atomic stop → swap → start
+- Skipped when `tailscale_managed: false` (e.g., bridge-mode APs)
+- **Run with LAN IP** to avoid losing connectivity: `-e "ansible_host=<LAN_IP>"`
 
 ### base-cloud
 - Base setup for cloud VMs (Vultr, etc.)
@@ -370,6 +372,7 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 | `openwrt_root_password` | Root password (from per-host vault) |
 | `ansible_password` | SSH auth password (from per-host vault, enables passwordless deploys) |
 | `tailscale_managed` | Whether to manage Tailscale on this host (default: true) |
+| `ansible_remote_tmp` | Temp dir on router — set to /tmp/.ansible/tmp (tmpfs) to avoid full overlay |
 | `ansible_shell_type` | Shell type (sh for ash) |
 | `ansible_python_interpreter` | Python path (/usr/bin/python3) |
 
@@ -387,6 +390,13 @@ OpenWRT needs Python installed for Ansible to work:
 opkg update && opkg install python3 python3-urllib
 ```
 The openwrt.yml playbook handles this automatically via a `raw` pre-task.
+
+### Overlay Disk Space
+- OpenWRT overlay filesystem is small (~57MB) and often nearly full
+- `ansible_remote_tmp: /tmp/.ansible/tmp` directs Ansible temp files to tmpfs (RAM) instead of overlay
+- **Never download large files directly to the router** — download on localhost and push binaries via `copy`
+- To free overlay space: `opkg remove <package>` (but packages on overlay are small)
+- `/tmp` is tmpfs (RAM-backed, ~196MB) — safe for staging large files
 
 ### musl vs glibc Limitation
 OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Companion) won't work without recompilation.
