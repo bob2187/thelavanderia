@@ -55,6 +55,22 @@
     /etc/init.d/samba4 restart
   when: samba_fruit_check.stdout | trim != "0"
 
+- name: Check Samba share is writable
+  raw: uci get samba4.@sambashare[0].read_only 2>/dev/null || echo "not_found"
+  register: samba_readonly_check
+  changed_when: false
+  failed_when: false
+
+- name: Set Samba share to writable with guest access
+  raw: >
+    uci set samba4.@sambashare[0].read_only='no' &&
+    uci set samba4.@sambashare[0].guest_ok='yes' &&
+    uci commit samba4 &&
+    /etc/init.d/samba4 restart
+  when:
+    - samba_readonly_check.stdout | default('not_found') | trim != 'not_found'
+    - samba_readonly_check.stdout | default('') | trim == 'yes'
+
 - name: Get current log buffer size
   raw: uci get system.@system[0].log_size 2>/dev/null || echo "64"
   register: current_log_size
