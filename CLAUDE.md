@@ -289,8 +289,14 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 - Base setup for OpenWRT/GL.iNET routers
 - Sets hostname via UCI
 - Deploys SSH authorized keys to dropbear
-- Fixes Samba `smb.conf.template` for macOS compatibility: patches veto files to include all `._*` AppleDouble resource forks (not just `._.DS_Store`), enabling proper file/directory deletion from macOS SMB clients
-- Idempotent: checks before patching, only restarts Samba if changed
+- Fixes Samba `smb.conf.template` for macOS compatibility:
+  - Patches veto files to include all `._*` AppleDouble resource forks (not just `._.DS_Store`)
+  - Removes `fruit` and `streams_xattr` VFS modules (incompatible with exFAT, caused `ad_convert_xattr` log spam on every macOS browse)
+- Increases system log buffer to 256KB (up from 64KB default) on all routers to prevent Tailscale stale peer messages from filling the buffer
+- On gl-ax1800-ap1 only:
+  - Sets 2.4GHz WiFi (radio1) to channel 1 (avoids channel 11 congestion causing 20MHz fallback)
+  - Disables broken `gl_nas_sys` and `vpnpolicy` init scripts (reference missing dependencies, not needed in bridge mode)
+- Idempotent: checks before patching, only restarts services if changed
 
 ### tailscale-openwrt
 - Updates Tailscale on GL.iNET routers from official static builds

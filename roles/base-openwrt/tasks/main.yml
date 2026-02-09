@@ -37,3 +37,66 @@
     /etc/samba/smb.conf.template &&
     /etc/init.d/samba4 restart
   when: samba_veto_check.stdout | trim == "0"
+
+- name: Check Samba vfs_fruit config
+  raw: grep -c 'vfs objects = catia fruit streams_xattr' /etc/samba/smb.conf.template 2>/dev/null || echo "0"
+  register: samba_fruit_check
+  changed_when: false
+  failed_when: false
+
+- name: Remove vfs_fruit and streams_xattr from Samba config (exFAT incompatible)
+  raw: >
+    sed -i 's|vfs objects = catia fruit streams_xattr|vfs objects = catia|'
+    /etc/samba/smb.conf.template &&
+    sed -i '/fruit:aapl = yes/d'
+    /etc/samba/smb.conf.template &&
+    sed -i '/fruit:nfs_aces = no/d'
+    /etc/samba/smb.conf.template &&
+    /etc/init.d/samba4 restart
+  when: samba_fruit_check.stdout | trim != "0"
+
+- name: Get current log buffer size
+  raw: uci get system.@system[0].log_size 2>/dev/null || echo "64"
+  register: current_log_size
+  changed_when: false
+
+- name: Increase system log buffer to 256KB
+  raw: >
+    uci set system.@system[0].log_size=256 &&
+    uci commit system &&
+    /etc/init.d/log restart
+  when: current_log_size.stdout | trim | int < 256
+
+- name: Get current 2.4GHz WiFi channel on gl-ax1800-ap1
+  raw: uci get wireless.radio1.channel 2>/dev/null || echo "unknown"
+  register: current_wifi_channel
+  changed_when: false
+  when: inventory_hostname == 'gl-ax1800-ap1'
+
+- name: Set 2.4GHz WiFi to channel 1 on gl-ax1800-ap1
+  raw: >
+    uci set wireless.radio1.channel='1' &&
+    uci commit wireless &&
+    wifi reload
+  when:
+    - inventory_hostname == 'gl-ax1800-ap1'
+    - current_wifi_channel.stdout | default('') | trim != '1'
+
+- name: Check broken init scripts on gl-ax1800-ap1
+  raw: >
+    echo "gl_nas_sys:$(ls /etc/rc.d/S*gl_nas_sys 2>/dev/null | wc -l):vpnpolicy:$(ls /etc/rc.d/S*vpnpolicy 2>/dev/null | wc -l)"
+  register: init_script_check
+  changed_when: false
+  when: inventory_hostname == 'gl-ax1800-ap1'
+
+- name: Disable broken gl_nas_sys init script on gl-ax1800-ap1
+  raw: /etc/init.d/gl_nas_sys disable
+  when:
+    - inventory_hostname == 'gl-ax1800-ap1'
+    - "'gl_nas_sys:0:' not in init_script_check.stdout | default('')"
+
+- name: Disable broken vpnpolicy init script on gl-ax1800-ap1
+  raw: /etc/init.d/vpnpolicy disable
+  when:
+    - inventory_hostname == 'gl-ax1800-ap1'
+    - "':vpnpolicy:0' not in init_script_check.stdout | default('')"
