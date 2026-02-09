@@ -426,7 +426,7 @@ OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Compani
 ### Samba/SMB Shares
 - GL.iNET routers use Samba config template at `/etc/samba/smb.conf.template`
 - USB drives are mounted at `/tmp/mountd/<partition>` (e.g., `/tmp/mountd/disk1_part1`)
-- exFAT filesystems don't support xattrs, so `streams_xattr` VFS module can't store macOS resource forks — macOS falls back to `._*` AppleDouble files
+- exFAT filesystems don't support xattrs — `fruit` and `streams_xattr` VFS modules have been removed by the `base-openwrt` role (they caused `ad_convert_xattr` log spam on every macOS browse). Only `catia` remains.
 - The default veto files list only blocks `._.DS_Store`, not all `._*` files — this causes "Directory not empty" errors when deleting from macOS
 - The `base-openwrt` role patches this to veto all `._*` files with `delete veto files = yes`
 - Share config is in `/etc/config/samba4` (UCI), template is `/etc/samba/smb.conf.template`
