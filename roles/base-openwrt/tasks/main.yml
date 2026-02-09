@@ -24,3 +24,16 @@
     KEYS
     chmod 600 /etc/dropbear/authorized_keys
   when: admin_ssh_keys | default([]) | length > 0
+
+- name: Check Samba veto files config for macOS compatibility
+  raw: grep -c '/\._\*/' /etc/samba/smb.conf.template 2>/dev/null || echo "0"
+  register: samba_veto_check
+  changed_when: false
+  failed_when: false
+
+- name: Fix Samba veto files to include all AppleDouble resource forks
+  raw: >
+    sed -i 's|veto files = /Thumbs.db/.DS_Store/._.DS_Store/.apdisk/|veto files = /Thumbs.db/.DS_Store/._*/.apdisk/|'
+    /etc/samba/smb.conf.template &&
+    /etc/init.d/samba4 restart
+  when: samba_veto_check.stdout | trim == "0"

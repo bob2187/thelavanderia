@@ -17,6 +17,7 @@ thelavanderia/
 │   └── vultr.yml                       # Cloud VM setup
 ├── roles/
 │   ├── base/                           # Pi base OS setup
+│   ├── base-openwrt/                   # OpenWRT base setup + Samba macOS fix
 │   ├── base-cloud/                     # Cloud VM SSH hardening
 │   ├── companion/                      # Bitfocus Companion (currently broken)
 │   ├── desktop/                        # Desktop wallpaper customization
@@ -185,7 +186,7 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 |----------|--------|-------|---------|
 | `production-control.yml` | Raspberry Pis | base, desktop, tailscale, tailscale-autoroute*, rpiconnect, network-api | Full Pi setup (*autoroute only when enabled per host) |
 | `imaging.yml` | localhost | pi-image | Create customized Pi image from virgin base |
-| `openwrt.yml` | OpenWRT routers | (raw bootstrap) + tailscale-openwrt | Python bootstrap + Tailscale updates |
+| `openwrt.yml` | OpenWRT routers | (raw bootstrap) + base-openwrt, tailscale-openwrt | Python bootstrap + base config + Tailscale updates |
 | `vultr.yml` | Vultr VM | base-cloud, tailscale, unity-relay | SSH hardening + Tailscale + Unity Intercom forwarding |
 
 ### Running Playbooks
@@ -284,13 +285,22 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 - Disables cloud-init after first boot
 - Templates: `user-data.j2`, `user-data-minimal.j2`, `network-config.j2`
 
+### base-openwrt
+- Base setup for OpenWRT/GL.iNET routers
+- Sets hostname via UCI
+- Deploys SSH authorized keys to dropbear
+- Fixes Samba `smb.conf.template` for macOS compatibility: patches veto files to include all `._*` AppleDouble resource forks (not just `._.DS_Store`), enabling proper file/directory deletion from macOS SMB clients
+- Idempotent: checks before patching, only restarts Samba if changed
+
 ### tailscale-openwrt
-- Updates Tailscale on GL.iNET routers from official ARM64 static builds
+- Updates Tailscale on GL.iNET routers from official static builds
+- Uses `router_arch` host var to download correct architecture (arm, arm64, etc.)
 - Checks current version against latest release via Tailscale API
 - Downloads tarball on **localhost** (not the router) to avoid overlay space issues
 - Stages binaries to `/tmp` (tmpfs) on the router, then does atomic stop → swap → start
 - Skipped when `tailscale_managed: false` (e.g., bridge-mode APs)
 - **Run with LAN IP** to avoid losing connectivity: `-e "ansible_host=<LAN_IP>"`
+- **Important**: `router_arch` must match Tailscale's naming: `arm` (armv7l/32-bit), `arm64` (aarch64/64-bit). The GL-AX1800 runs a 32-bit kernel (`arm`) despite the SoC supporting 64-bit.
 
 ### base-cloud
 - Base setup for cloud VMs (Vultr, etc.)
@@ -363,7 +373,7 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 |----------|---------|
 | `router_model` | Hardware model (e.g., GL-BE3600, GL-AX1800) |
 | `router_brand` | Manufacturer (GL.iNET) |
-| `router_arch` | CPU architecture (aarch64) |
+| `router_arch` | Tailscale tarball arch: `arm` (GL-AX1800, armv7l kernel) or `arm64` (GL-BE3600, aarch64 kernel) |
 | `tailscale_managed` | Set to false on APs without Tailscale (overrides group default) |
 
 ### OpenWRT Group Variables (group_vars/openwrt_routers/vars.yml)
@@ -406,6 +416,14 @@ OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Compani
 - Init script: `/etc/init.d/tailscale`
 - GL.iNET ships outdated versions; use `tailscale-openwrt` role to update
 - Update via LAN IP to avoid losing connectivity mid-update
+
+### Samba/SMB Shares
+- GL.iNET routers use Samba config template at `/etc/samba/smb.conf.template`
+- USB drives are mounted at `/tmp/mountd/<partition>` (e.g., `/tmp/mountd/disk1_part1`)
+- exFAT filesystems don't support xattrs, so `streams_xattr` VFS module can't store macOS resource forks — macOS falls back to `._*` AppleDouble files
+- The default veto files list only blocks `._.DS_Store`, not all `._*` files — this causes "Directory not empty" errors when deleting from macOS
+- The `base-openwrt` role patches this to veto all `._*` files with `delete veto files = yes`
+- Share config is in `/etc/config/samba4` (UCI), template is `/etc/samba/smb.conf.template`
 
 ### Router Backup/Restore
 ```bash

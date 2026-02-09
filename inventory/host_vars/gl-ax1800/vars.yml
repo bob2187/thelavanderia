@@ -4,4 +4,4 @@
 
 router_model: "GL-AX1800"
 router_brand: "GL.iNET"
-router_arch: "aarch64"
+router_arch: "arm"

@@ -16,14 +16,14 @@
   when: tailscale_managed
   block:
     - name: Get current Tailscale version
-      command: tailscale version
+      raw: tailscale version 2>/dev/null | head -1
       register: current_version
       changed_when: false
       failed_when: false
 
     - name: Display current version
       debug:
-        msg: "Current Tailscale version: {{ current_version.stdout_lines[0] | default('not installed') }}"
+        msg: "Current Tailscale version: {{ current_version.stdout | trim | default('not installed', true) }}"
 
     - name: Get latest Tailscale version
       uri:
@@ -43,37 +43,35 @@
 
     - name: Check if update needed
       set_fact:
-        update_needed: "{{ current_version.stdout_lines[0] | default('0') != latest_version }}"
+        update_needed: "{{ (current_version.stdout | trim | default('0', true)) != latest_version }}"
 
     - name: Download latest Tailscale on localhost
       get_url:
-        url: "https://pkgs.tailscale.com/stable/tailscale_{{ latest_version }}_arm64.tgz"
-        dest: "/tmp/tailscale_{{ latest_version }}_arm64.tgz"
+        url: "https://pkgs.tailscale.com/stable/tailscale_{{ latest_version }}_{{ router_arch }}.tgz"
+        dest: "/tmp/tailscale_{{ latest_version }}_{{ router_arch }}.tgz"
         mode: '0644'
       delegate_to: localhost
       become: no
-      run_once: true
       when: update_needed
 
     - name: Extract Tailscale on localhost
       shell: |
         cd /tmp
-        tar -xzf tailscale_{{ latest_version }}_arm64.tgz
+        tar -xzf tailscale_{{ latest_version }}_{{ router_arch }}.tgz
       delegate_to: localhost
       become: no
-      run_once: true
       when: update_needed
 
     - name: Stage tailscale binary to /tmp on router
       copy:
-        src: "/tmp/tailscale_{{ latest_version }}_arm64/tailscale"
+        src: "/tmp/tailscale_{{ latest_version }}_{{ router_arch }}/tailscale"
         dest: /tmp/tailscale_new
         mode: '0755'
       when: update_needed
 
     - name: Stage tailscaled binary to /tmp on router
       copy:
-        src: "/tmp/tailscale_{{ latest_version }}_arm64/tailscaled"
+        src: "/tmp/tailscale_{{ latest_version }}_{{ router_arch }}/tailscaled"
         dest: /tmp/tailscaled_new
         mode: '0755'
       when: update_needed
@@ -91,13 +89,12 @@
         path: "{{ item }}"
         state: absent
       loop:
-        - "/tmp/tailscale_{{ latest_version }}_arm64.tgz"
-        - "/tmp/tailscale_{{ latest_version }}_arm64"
+        - "/tmp/tailscale_{{ latest_version }}_{{ router_arch }}.tgz"
+        - "/tmp/tailscale_{{ latest_version }}_{{ router_arch }}"
       delegate_to: localhost
       become: no
-      run_once: true
       when: update_needed
 
     - name: Update summary
       debug:
-        msg: "{{ 'Tailscale updated from ' + current_version.stdout_lines[0] + ' to ' + latest_version if update_needed else 'Tailscale already at latest version ' + latest_version }}"
+        msg: "{{ 'Tailscale updated from ' + (current_version.stdout | trim | default('not installed', true)) + ' to ' + latest_version if update_needed else 'Tailscale already at latest version ' + latest_version }}"
