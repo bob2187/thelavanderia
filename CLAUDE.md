@@ -306,8 +306,10 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 - Sets hostname via UCI
 - Deploys SSH authorized keys to dropbear
 - Fixes Samba `smb.conf.template` for macOS compatibility:
-  - Patches veto files to include all `._*` AppleDouble resource forks (not just `._.DS_Store`)
-  - Removes `fruit` and `streams_xattr` VFS modules (incompatible with exFAT, caused `ad_convert_xattr` log spam on every macOS browse)
+  - Veto files block Spotlight (`.Spotlight-V100`) and `.fseventsd` only — do NOT veto `.DS_Store`, `._*`, `.Trashes`, or `.TemporaryItems` as these break Finder delete/copy/move
+  - Removes `fruit` and `streams_xattr` VFS modules (caused `ad_convert_xattr` log spam)
+  - Enables `force user = root` / `force group = root` for guest write access
+  - Removes GL.iNET NAS user restrictions (`valid users`, `write_list`, `read_list`) that block guest access
 - Increases system log buffer to 256KB (up from 64KB default) on all routers to prevent Tailscale stale peer messages from filling the buffer
 - On gl-ax1800-ap1 only:
   - Sets 2.4GHz WiFi (radio1) to channel 1 (avoids channel 11 congestion causing 20MHz fallback)
@@ -442,9 +444,15 @@ OpenWRT uses **musl libc**, not glibc. Pre-compiled Linux binaries (like Compani
 ### Samba/SMB Shares
 - GL.iNET routers use Samba config template at `/etc/samba/smb.conf.template`
 - USB drives are mounted at `/tmp/mountd/<partition>` (e.g., `/tmp/mountd/disk1_part1`)
-- exFAT filesystems don't support xattrs — `fruit` and `streams_xattr` VFS modules have been removed by the `base-openwrt` role (they caused `ad_convert_xattr` log spam on every macOS browse). Only `catia` remains.
-- The default veto files list only blocks `._.DS_Store`, not all `._*` files — this causes "Directory not empty" errors when deleting from macOS
-- The `base-openwrt` role patches this to veto all `._*` files with `delete veto files = yes`
+- **NTFS recommended** for USB drives — the OpenWRT kernel exFAT driver (`kmod-fs-exfat 4.4.60`) is buggy and causes read-only remounts. Use `ntfs-3g` (FUSE-based, already installed) instead. Mac can read NTFS natively.
+  - Format: `mkntfs -f -L 'label' /dev/sda1`
+  - Mount: `ntfs-3g /dev/sda1 /tmp/mountd/disk1_part1`
+- `fruit` and `streams_xattr` VFS modules removed by `base-openwrt` role (caused `ad_convert_xattr` log spam). Only `catia` remains.
+- Veto files: only block `.Spotlight-V100` and `.fseventsd`
+  - Do **NOT** veto `.DS_Store`, `._*`, `.Trashes`, or `.TemporaryItems` — these break Finder delete/copy/move operations
+- `force user = root` / `force group = root` required for guest write access
+- GL.iNET NAS sets `valid users` group restrictions on shares — the role removes these to allow guest access
+- Also recommended on Mac clients: `defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool true`
 - Share config is in `/etc/config/samba4` (UCI), template is `/etc/samba/smb.conf.template`
 
 ### Router Backup/Restore

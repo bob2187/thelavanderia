@@ -1,5 +1,5 @@
 ---
-# Base role for OpenWRT routers: hostname and SSH key deployment
+# Base role for OpenWRT routers: hostname, SSH keys, Samba macOS compatibility
 
 - name: Get current hostname
   raw: uci get system.@system[0].hostname
@@ -25,15 +25,17 @@
     chmod 600 /etc/dropbear/authorized_keys
   when: admin_ssh_keys | default([]) | length > 0
 
-- name: Check Samba veto files config for macOS compatibility
-  raw: grep -c '/\._\*/' /etc/samba/smb.conf.template 2>/dev/null || echo "0"
+- name: Check Samba veto files for Spotlight blocking
+  raw: grep -c '\.Spotlight-V100' /etc/samba/smb.conf.template 2>/dev/null || echo "0"
   register: samba_veto_check
   changed_when: false
   failed_when: false
 
-- name: Fix Samba veto files to include all AppleDouble resource forks
+# Only veto Spotlight and fseventsd — do NOT veto .DS_Store, ._*, .Trashes,
+# or .TemporaryItems as these break Finder operations (delete, copy, move)
+- name: Fix Samba veto files to block Spotlight indexing
   raw: >
-    sed -i 's|veto files = /Thumbs.db/.DS_Store/._.DS_Store/.apdisk/|veto files = /Thumbs.db/.DS_Store/._*/.apdisk/|'
+    sed -i 's|veto files = .*|veto files = /Thumbs.db/.apdisk/.Spotlight-V100/.fseventsd/|'
     /etc/samba/smb.conf.template &&
     /etc/init.d/samba4 restart
   when: samba_veto_check.stdout | trim == "0"
@@ -44,7 +46,7 @@
   changed_when: false
   failed_when: false
 
-- name: Remove vfs_fruit and streams_xattr from Samba config (exFAT incompatible)
+- name: Remove vfs_fruit and streams_xattr from Samba config
   raw: >
     sed -i 's|vfs objects = catia fruit streams_xattr|vfs objects = catia|'
     /etc/samba/smb.conf.template &&
@@ -55,21 +57,37 @@
     /etc/init.d/samba4 restart
   when: samba_fruit_check.stdout | trim != "0"
 
-- name: Check Samba share is writable
-  raw: uci get samba4.@sambashare[0].read_only 2>/dev/null || echo "not_found"
-  register: samba_readonly_check
+- name: Check Samba force user config
+  raw: grep -c '^[[:space:]]*force user = root' /etc/samba/smb.conf.template 2>/dev/null || echo "0"
+  register: samba_force_user_check
   changed_when: false
   failed_when: false
 
-- name: Set Samba share to writable with guest access
+- name: Enable force user/group root for guest write access
   raw: >
+    sed -i 's|#force group = root|force group = root|'
+    /etc/samba/smb.conf.template &&
+    sed -i 's|#force user = root|force user = root|'
+    /etc/samba/smb.conf.template &&
+    /etc/init.d/samba4 restart
+  when: samba_force_user_check.stdout | trim == "0"
+
+- name: Check Samba share for GL.iNET user restrictions
+  raw: uci get samba4.@sambashare[0].users 2>/dev/null || echo "not_found"
+  register: samba_users_check
+  changed_when: false
+  failed_when: false
+
+- name: Remove GL.iNET NAS user restrictions from Samba share
+  raw: >
+    uci delete samba4.@sambashare[0].users 2>/dev/null;
+    uci delete samba4.@sambashare[0].write_list 2>/dev/null;
+    uci delete samba4.@sambashare[0].read_list 2>/dev/null;
     uci set samba4.@sambashare[0].read_only='no' &&
     uci set samba4.@sambashare[0].guest_ok='yes' &&
     uci commit samba4 &&
     /etc/init.d/samba4 restart
-  when:
-    - samba_readonly_check.stdout | default('not_found') | trim != 'not_found'
-    - samba_readonly_check.stdout | default('') | trim == 'yes'
+  when: samba_users_check.stdout | default('not_found') | trim != 'not_found'
 
 - name: Get current log buffer size
   raw: uci get system.@system[0].log_size 2>/dev/null || echo "64"
