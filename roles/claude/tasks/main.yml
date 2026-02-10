@@ -1,0 +1,14 @@
+---
+# Claude role: Install Claude Desktop app and Claude Code CLI
+
+- name: Install Claude Desktop
+  community.general.homebrew_cask:
+    name: claude
+    state: present
+  become: false
+
+- name: Install Claude Code
+  community.general.homebrew_cask:
+    name: claude-code
+    state: present
+  become: false

@@ -1,0 +1,41 @@
+---
+- name: macOS Host Setup
+  hosts: macos_hosts
+  gather_facts: false
+
+  pre_tasks:
+    - name: Install Xcode Command Line Tools
+      raw: xcode-select -p || xcode-select --install && sleep 30
+      register: xcode_result
+      changed_when: "'install' in xcode_result.stdout"
+
+    - name: Gather facts
+      setup:
+
+    - name: Check if Homebrew is installed
+      stat:
+        path: /opt/homebrew/bin/brew
+      register: brew_check
+
+    - name: Create Homebrew directory
+      file:
+        path: /opt/homebrew
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: admin
+        mode: "0755"
+      become: true
+      when: not brew_check.stat.exists
+
+    - name: Install Homebrew
+      shell: |
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      when: not brew_check.stat.exists
+
+    - name: Verify Homebrew installation
+      command: /opt/homebrew/bin/brew --version
+      changed_when: false
+
+  roles:
+    - role: claude
+      tags: claude
