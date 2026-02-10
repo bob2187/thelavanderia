@@ -13,12 +13,14 @@ thelavanderia/
 ├── playbooks/
 │   ├── production-control.yml          # Raspberry Pi full setup
 │   ├── imaging.yml                     # Pi image customization (runs on localhost)
+│   ├── macos.yml                       # macOS host setup (Homebrew + apps)
 │   ├── openwrt.yml                     # OpenWRT router setup
 │   └── vultr.yml                       # Cloud VM setup
 ├── roles/
 │   ├── base/                           # Pi base OS setup
 │   ├── base-openwrt/                   # OpenWRT base setup + Samba macOS fix
 │   ├── base-cloud/                     # Cloud VM SSH hardening
+│   ├── claude/                         # Claude Desktop + Claude Code CLI (macOS)
 │   ├── companion/                      # Bitfocus Companion (currently broken)
 │   ├── desktop/                        # Desktop wallpaper customization
 │   ├── network-api/                    # Flask REST API for network config
@@ -29,7 +31,7 @@ thelavanderia/
 │   ├── tailscale-openwrt/              # Tailscale updates for OpenWRT
 │   └── unity-relay/                    # Unity Intercom port forwarding
 ├── inventory/
-│   ├── hosts.yml                       # Host definitions (3 groups)
+│   ├── hosts.yml                       # Host definitions (4 groups)
 │   ├── group_vars/
 │   │   ├── all/
 │   │   │   ├── vars.yml                # Global variables
@@ -163,6 +165,13 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
   - No Tailscale (`tailscale_managed: false`)
   - User: root
 
+### macOS Hosts (macos_hosts group)
+- **MacMini-HMO**: Mac Mini at HMO
+  - Tailscale IP: 100.109.197.33
+  - User: hmomacmini
+  - SSH key: `~/.ssh/id_ed25519`
+  - Purpose: Unity Intercom endpoint, general workstation
+
 ### Cloud VMs (cloud_vms group)
 - **vultr**: Debian 12 VM on Vultr
   - Public IP: 155.138.253.242
@@ -187,6 +196,7 @@ Stored in `.vault_pass` (gitignored). Ansible auto-loads it via `ansible.cfg`.
 | `production-control.yml` | Raspberry Pis | base, desktop, tailscale, tailscale-autoroute*, rpiconnect, network-api | Full Pi setup (*autoroute only when enabled per host) |
 | `imaging.yml` | localhost | pi-image | Create customized Pi image from virgin base |
 | `openwrt.yml` | OpenWRT routers | (raw bootstrap) + base-openwrt, tailscale-openwrt | Python bootstrap + base config + Tailscale updates |
+| `macos.yml` | macOS hosts | claude | Xcode CLI tools + Homebrew bootstrap + Claude apps |
 | `vultr.yml` | Vultr VM | base-cloud, tailscale, unity-relay | SSH hardening + Tailscale + Unity Intercom forwarding |
 
 ### Running Playbooks
@@ -262,6 +272,12 @@ For new cloud VMs, use an auth key for automated Tailscale setup:
 - Enables user lingering for persistent session
 - Background signin with URL extraction and online verification
 - Supports `skip` to skip authentication
+
+### claude
+- Installs Claude Desktop app and Claude Code CLI on macOS
+- Both installed as Homebrew casks (`brew install --cask claude`, `brew install --cask claude-code`)
+- Runs as non-root (`become: false`) — required for Homebrew on macOS
+- Homebrew must be installed first (handled by `macos.yml` pre_tasks)
 
 ### companion (currently broken)
 - Bitfocus Companion (GUI build)
